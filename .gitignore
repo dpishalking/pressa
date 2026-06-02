@@ -1,0 +1,9 @@
+.DS_Store
+.idea/
+.vscode/
+*.local
+.env
+.env.*
+node_modules/
+dist/
+.next/
