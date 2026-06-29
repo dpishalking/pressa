@@ -1,6 +1,5 @@
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
-import { smartFormatReply } from "./format.js";
 
 const API_URL = (process.env.API_URL ?? "http://localhost:3100").replace(/\/$/, "");
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? "";
@@ -169,7 +168,7 @@ export async function fetchBotStats(period: "all" | "today"): Promise<BotStats> 
 export async function sendAdminPanel(ctx: Context, period: "all" | "today" = "all"): Promise<void> {
   const stats = await fetchBotStats(period);
   const text = formatStatsMessage(stats);
-  await ctx.reply(smartFormatReply(text), {
+  await ctx.reply(text, {
     parse_mode: "HTML",
     reply_markup: adminStatsKeyboard(period),
   });

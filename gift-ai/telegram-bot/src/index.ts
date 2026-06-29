@@ -520,19 +520,27 @@ bot.on("callback_query:data", async (ctx) => {
         return;
       }
       const period = data.endsWith("today") ? "today" : ("all" as const);
-      await ctx.answerCallbackQuery();
-      const stats = await fetchBotStats(period);
-      const text = formatStatsMessage(stats);
       try {
-        await ctx.editMessageText(smartFormatReply(text), {
-          parse_mode: "HTML",
-          reply_markup: adminStatsKeyboard(period),
-        });
-      } catch {
-        await ctx.reply(smartFormatReply(text), {
-          parse_mode: "HTML",
-          reply_markup: adminStatsKeyboard(period),
-        });
+        const stats = await fetchBotStats(period);
+        const text = formatStatsMessage(stats);
+        await ctx.answerCallbackQuery();
+        try {
+          await ctx.editMessageText(text, {
+            parse_mode: "HTML",
+            reply_markup: adminStatsKeyboard(period),
+          });
+        } catch (editErr) {
+          const msg = editErr instanceof Error ? editErr.message : "";
+          if (!/message is not modified/i.test(msg)) {
+            await ctx.reply(text, {
+              parse_mode: "HTML",
+              reply_markup: adminStatsKeyboard(period),
+            });
+          }
+        }
+      } catch (e) {
+        console.error("[admin callback]", e);
+        await ctx.answerCallbackQuery({ text: "Не удалось обновить статистику" });
       }
       return;
     }

@@ -82,7 +82,7 @@ export function recordAnalyticsEvent(opts: {
 export function getBotStats(period: "all" | "today" = "all"): BotStats {
   const db = getDb();
   const p = periodClause(period);
-  const pConv = periodClause(period, "c.created_at");
+  const pConv = periodClause(period, "created_at");
 
   const countEvent = (type: AnalyticsEventType, distinctUser = false): number => {
     const col = distinctUser ? "COUNT(DISTINCT channel_user_id)" : "COUNT(*)";
