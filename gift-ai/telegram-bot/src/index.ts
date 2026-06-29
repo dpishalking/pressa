@@ -54,8 +54,8 @@ type ChatResponse = {
 
 const shownGiftByUser = new Map<string, string>();
 
-async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`);
+async function apiGet<T>(path: string, timeoutMs = 60_000): Promise<T> {
+  const res = await fetch(`${API_URL}${path}`, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`API ${res.status}: ${text.slice(0, 200)}`);
@@ -63,11 +63,12 @@ async function apiGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
+async function apiPost<T>(path: string, body: Record<string, unknown>, timeoutMs = 60_000): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -339,13 +340,13 @@ async function handleUserTextInner(ctx: Context, text: string): Promise<void> {
 
 function isOverloadError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : "";
-  return /503|429|UNAVAILABLE|high demand/i.test(msg);
+  return /503|429|UNAVAILABLE|high demand|timeout|aborted/i.test(msg);
 }
 
 async function replyChatError(ctx: Context, e: unknown): Promise<void> {
   console.error(e);
   if (isOverloadError(e)) {
-    await ctx.reply("Сейчас AI перегружен. Подождите 10–20 секунд и отправьте сообщение ещё раз — я на месте.");
+    await ctx.reply("Сейчас AI перегружен или отвечает слишком долго. Подождите 10–20 секунд и отправьте сообщение ещё раз — я на месте.");
     return;
   }
   await ctx.reply("Не удалось обработать сообщение. Попробуйте ещё раз.");

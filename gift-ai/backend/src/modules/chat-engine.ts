@@ -362,18 +362,13 @@ export class ChatEngine {
     const leadScoreBand = scoreToBand(leadScore);
 
     let isComplete = engine.isComplete;
-    let summary = conv.summary;
-    let bitrixLeadId = conv.bitrixLeadId;
+    const summary = conv.summary;
+    const bitrixLeadId = conv.bitrixLeadId;
 
     if (managerHandoff && !conv.bitrixLeadId) {
       const transcript = conversationMemory.formatTranscript(conv.id);
       const payload = this.buildLeadPayload(conv, mergedFields, leadScore, leadScoreBand, transcript, summary);
-      summary = await summaryGenerator.generate({ ...payload, aiSummary: "" });
-      payload.aiSummary = summary;
-
-      const crm = await crmAdapter.createLead(payload);
-      bitrixLeadId = crm.leadId;
-      this.storeLead(payload, crm.leadId, crmAdapter.name);
+      this.finalizeLeadAsync(conv.id, payload);
     }
 
     if (isComplete) {
@@ -429,6 +424,26 @@ export class ChatEngine {
       return `Конечно! Повторю:\n\n${cleaned}`;
     }
     return null;
+  }
+
+  private finalizeLeadAsync(conversationId: string, payload: LeadPayload): void {
+    void (async () => {
+      try {
+        const aiSummary = await summaryGenerator.generate({ ...payload, aiSummary: "" });
+        payload.aiSummary = aiSummary;
+        const crm = await crmAdapter.createLead(payload);
+        this.storeLead(payload, crm.leadId, crmAdapter.name);
+        conversationMemory.update(conversationId, {
+          summary: aiSummary,
+          bitrixLeadId: crm.leadId,
+        });
+      } catch (e) {
+        logger.error("Lead finalize failed", {
+          conversationId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    })();
   }
 
   private buildLeadPayload(

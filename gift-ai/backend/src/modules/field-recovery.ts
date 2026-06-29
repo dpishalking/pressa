@@ -52,6 +52,68 @@ function pickRecipientAge(text: string): string {
   return m ? m[1] : "";
 }
 
+const MONTHS =
+  "января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря";
+
+function pickEventDate(text: string): string {
+  const month = text.match(new RegExp(`(\\d{1,2})\\s+(${MONTHS})`, "i"));
+  if (month) return `${month[1]} ${month[2].toLowerCase()}`;
+
+  const dotted = text.match(/(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?/);
+  if (dotted) {
+    const year = dotted[3] ? ` ${dotted[3].length === 2 ? `20${dotted[3]}` : dotted[3]}` : "";
+    return `${dotted[1]}.${dotted[2]}${year}`;
+  }
+
+  if (/срочно|как можно скорее|на этой неделе|завтра|послезавтра/i.test(text)) {
+    return text.trim().slice(0, 80);
+  }
+  return "";
+}
+
+function pickCity(text: string): string {
+  const lower = text.toLowerCase();
+  const known: [RegExp, string][] = [
+    [/\bмоскв[аеу]?\b/, "Москва"],
+    [/санкт[-\s]?петербург|петербург|\bспб\b|\bпитер\b/, "Санкт-Петербург"],
+    [/\bминск\b/, "Минск"],
+    [/\bриг[аеу]\b/, "Рига"],
+    [/\bталлин\w*\b/, "Таллин"],
+    [/\bвильнюс\w*\b/, "Вильнюс"],
+    [/\bказан\w*\b/, "Казань"],
+    [/\bновосибирск\w*\b/, "Новосибирск"],
+    [/\bекатеринбург\w*\b/, "Екатеринбург"],
+  ];
+  for (const [re, label] of known) {
+    if (re.test(lower)) return label;
+  }
+
+  const m = text.match(/(?:^|[\s,])(?:в|до)\s+([А-ЯЁа-яё][А-ЯЁа-яё-]{2,})/);
+  if (m) {
+    const city = m[1].trim().replace(/\s+(нужен|доставк|к\s+\d).*$/i, "");
+    if (city.length >= 3 && city.length <= 40) return city[0].toUpperCase() + city.slice(1);
+  }
+
+  const tail = text.match(/(?:^|[\s,])([А-ЯЁа-яё][А-ЯЁа-яё-]{3,})\s*$/);
+  if (tail && !new RegExp(MONTHS, "i").test(tail[1])) {
+    const city = tail[1].trim();
+    if (!/^\d/.test(city)) return city[0].toUpperCase() + city.slice(1);
+  }
+  return "";
+}
+
+function pickBudget(text: string): string {
+  const rub = text.match(/(\d[\d\s]*)\s*(?:руб(?:лей|ля)?|₽)/i);
+  if (rub) return `${rub[1].replace(/\s/g, "")} рублей`;
+
+  const plain = text.trim();
+  if (/^\d{3,7}$/.test(plain)) return `${plain} рублей`;
+
+  const labeled = text.match(/(?:бюджет|до)\s*[:\-]?\s*(\d[\d\s]*)/i);
+  if (labeled) return `${labeled[1].replace(/\s/g, "")} рублей`;
+  return "";
+}
+
 function pickInterests(text: string): Partial<QualificationFields> {
   const patch: Partial<QualificationFields> = {};
   const chunks: string[] = [];
@@ -98,6 +160,22 @@ export function recoverFieldsFromTranscript(
   if (!FILLED(current.recipientAge)) {
     const age = pickRecipientAge(all);
     if (age) patch.recipientAge = age;
+  }
+
+  const dateSource = latestUserText?.trim() || all;
+  if (!FILLED(current.eventDate) && !FILLED(current.urgency)) {
+    const eventDate = pickEventDate(dateSource);
+    if (eventDate) patch.eventDate = eventDate;
+  }
+
+  if (!FILLED(current.city)) {
+    const city = pickCity(dateSource);
+    if (city) patch.city = city;
+  }
+
+  if (!FILLED(current.budget)) {
+    const budget = pickBudget(latestUserText?.trim() || all);
+    if (budget) patch.budget = budget;
   }
 
   if (!FILLED(current.recipientGender) && /\bу не[её]\b|\bей\b|\bнеё\b|\bженщин/i.test(all)) {
