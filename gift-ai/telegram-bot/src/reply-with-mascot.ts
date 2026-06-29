@@ -90,7 +90,7 @@ export async function replyWithMascot(
   extra?: Parameters<Context["reply"]>[1],
   formatOpts?: FormatOpts,
 ): Promise<void> {
-  const photoPath = mascotImagePath(scene);
+  const photoPath = mascotImagePath(scene, userIdFromCtx(ctx));
   if (!photoPath) {
     await sendHtml(ctx, text, extra, formatOpts);
     return;

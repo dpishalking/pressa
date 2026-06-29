@@ -1,4 +1,5 @@
 import { Bot, type Context } from "grammy";
+import { configureBotProfile } from "./bot-profile.js";
 import { giftLabel } from "./gift-emojis.js";
 import { giftPhotoPath } from "./gift-photos.js";
 import { smartFormatReply } from "./format.js";
@@ -11,7 +12,7 @@ import {
   managerHandoffKeyboard,
 } from "./keyboards.js";
 import { languageTitle, normalizeLanguage, type BotLanguage } from "./languages.js";
-import { sceneForStage } from "./mascot.js";
+import { resetMascotRotation, sceneForStage } from "./mascot.js";
 import { replyWithMascot, replyWithPhotoFile } from "./reply-with-mascot.js";
 import { clearBotScreen, rewindBotMessages, trackBotMessage, userIdFromCtx } from "./message-cleanup.js";
 import { enqueueUserTask } from "./user-queue.js";
@@ -260,6 +261,7 @@ async function beginConsultation(ctx: Context, catalogGiftExternalId?: string): 
   await clearBotScreen(ctx);
 
   const uid = channelUserId(ctx);
+  resetMascotRotation(uid);
   const { language } = getSession(uid);
   setSession(uid, { screen: "consult", catalogFromConsult: false });
   if (catalogGiftExternalId) {
@@ -532,8 +534,14 @@ bot.on("message:audio", async (ctx) => {
 bot.catch((err) => console.error("Bot error:", err));
 
 bot.start({
-  onStart: (info) => {
-    console.log(`✅ @${info.username} — gift consultant bot`);
+  onStart: async (botInfo) => {
+    console.log(`✅ @${botInfo.username} — gift consultant bot`);
+    try {
+      await configureBotProfile(bot.api);
+      console.log("✅ Bot profile description synced");
+    } catch (e) {
+      console.warn("⚠️  Could not sync bot profile description:", e);
+    }
     if (!isTranscribeAvailable()) {
       console.warn("⚠️  Voice disabled — check BOT_TOKEN and API_URL");
     }
