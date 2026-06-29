@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gift AI — Admin</title>
+  <style>
+    :root { --bg: #0f0f12; --card: #1a1a22; --text: #e8e6e3; --accent: #c9a227; --muted: #888; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; }
+    h1 { font-weight: 600; }
+    .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+    .card { background: var(--card); border-radius: 12px; padding: 16px; border: 1px solid #2a2a35; }
+    .card h3 { margin: 0 0 8px; color: var(--accent); }
+    .muted { color: var(--muted); font-size: 13px; }
+    input, textarea, button { font: inherit; }
+    input, textarea { width: 100%; padding: 8px; margin: 4px 0 12px; border-radius: 8px; border: 1px solid #333; background: #121218; color: var(--text); }
+    button { background: var(--accent); color: #111; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    button.secondary { background: #333; color: var(--text); }
+    #stats { display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+    #stats div { font-size: 14px; }
+    #stats strong { display: block; font-size: 28px; color: var(--accent); }
+    .row { display: flex; gap: 8px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h1>Gift AI — Admin</h1>
+  <p class="muted">Каталог подарков и статистика. API key в localStorage.</p>
+  <div>
+    <input id="apiKey" placeholder="ADMIN_API_KEY" type="password" />
+    <input id="apiUrl" placeholder="API URL" value="http://localhost:3100" style="max-width:320px" />
+    <button onclick="saveConfig()">Сохранить</button>
+  </div>
+  <div id="stats"></div>
+  <h2>Подарки</h2>
+  <div id="gifts" class="grid"></div>
+  <h2>Добавить подарок</h2>
+  <div class="card" style="max-width:600px">
+    <input id="newName" placeholder="Название" />
+    <textarea id="newDesc" rows="3" placeholder="Описание"></textarea>
+    <input id="newPriceMin" type="number" placeholder="Цена от" />
+    <input id="newPriceMax" type="number" placeholder="Цена до" />
+    <input id="newEmotions" placeholder="Эмоции (через запятую)" />
+    <input id="newOccasions" placeholder="Поводы (через запятую)" />
+    <button onclick="addGift()">Добавить</button>
+  </div>
+  <script>
+    const key = () => localStorage.getItem('giftAiKey') || '';
+    const url = () => localStorage.getItem('giftAiUrl') || 'http://localhost:3100';
+    function saveConfig() {
+      localStorage.setItem('giftAiKey', document.getElementById('apiKey').value);
+      localStorage.setItem('giftAiUrl', document.getElementById('apiUrl').value);
+      load();
+    }
+    async function api(path, opts = {}) {
+      const res = await fetch(url() + path, {
+        ...opts,
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': key(), ...(opts.headers||{}) },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    }
+    async function load() {
+      document.getElementById('apiKey').value = key();
+      document.getElementById('apiUrl').value = url();
+      try {
+        const stats = await api('/admin/stats');
+        document.getElementById('stats').innerHTML = `
+          <div><strong>${stats.totalConversations}</strong>диалогов</div>
+          <div><strong>${stats.completed}</strong>завершено</div>
+          <div><strong>${stats.conversionRate}%</strong>конверсия</div>
+          <div><strong>${stats.avgLeadScore}</strong>ср. score</div>`;
+        const { items } = await api('/admin/gifts');
+        document.getElementById('gifts').innerHTML = items.map(g => `
+          <div class="card">
+            <h3>${g.name}</h3>
+            <p class="muted">${g.priceMin}–${g.priceMax} ₽ · ${g.leadTimeDays} дн.</p>
+            <p>${g.description.slice(0,120)}…</p>
+            <div class="row">
+              <button class="secondary" onclick="toggleGift('${g.id}', ${!g.active})">${g.active ? 'Скрыть' : 'Показать'}</button>
+            </div>
+          </div>`).join('');
+      } catch (e) { alert('Ошибка: ' + e.message); }
+    }
+    async function toggleGift(id, active) {
+      await api('/admin/gifts/' + id, { method: 'PATCH', body: JSON.stringify({ active }) });
+      load();
+    }
+    async function addGift() {
+      await api('/admin/gifts', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: document.getElementById('newName').value,
+          description: document.getElementById('newDesc').value,
+          priceMin: Number(document.getElementById('newPriceMin').value),
+          priceMax: Number(document.getElementById('newPriceMax').value),
+          emotions: document.getElementById('newEmotions').value.split(',').map(s=>s.trim()).filter(Boolean),
+          occasions: document.getElementById('newOccasions').value.split(',').map(s=>s.trim()).filter(Boolean),
+        }),
+      });
+      load();
+    }
+    load();
+  </script>
+</body>
+</html>
