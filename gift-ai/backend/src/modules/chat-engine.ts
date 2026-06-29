@@ -12,6 +12,7 @@ import { leadScoring, recommendationEngine, scoreToBand } from "./lead-scoring.j
 import { recoverFieldsFromTranscript } from "./field-recovery.js";
 import { qualificationEngine } from "./qualification-engine.js";
 import { defaultNameForExternalId } from "./product-catalog.js";
+import { toEngagingCatalogDescription } from "./catalog-copy.js";
 import { isRepeatRequest } from "./stage-guide.js";
 import { summaryGenerator } from "./summary-generator.js";
 import type { Conversation, LeadPayload, QualificationFields } from "../types/index.js";
@@ -78,7 +79,7 @@ export class ChatEngine {
       id: g.id,
       externalId: g.externalId,
       name: defaultNameForExternalId(g.externalId) ?? g.name,
-      description: g.description,
+      description: toEngagingCatalogDescription(g.description),
       priceLabel: formatPriceLabel(g.priceMin, g.priceMax),
       emotions: g.emotions,
     }));

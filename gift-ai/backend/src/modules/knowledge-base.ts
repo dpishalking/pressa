@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "../db/client.js";
 import { canonicalExternalIds, defaultNameForExternalId } from "./product-catalog.js";
+import { toEngagingCatalogDescription } from "./catalog-copy.js";
 import type { Gift, SheetGiftRow } from "../types/index.js";
 
 function formatPrice(min: number, max: number): string {
@@ -168,7 +169,7 @@ export class KnowledgeBase {
         (g) =>
           `ID: ${g.externalId || g.id}
 Название: ${g.name}
-Описание: ${g.description}
+Описание: ${toEngagingCatalogDescription(g.description)}
 Цена: ${formatPrice(g.priceMin, g.priceMax)}
 Эмоции: ${g.emotions.join(", ")}
 Кому подходит: ${g.suitableFor.join(", ")}

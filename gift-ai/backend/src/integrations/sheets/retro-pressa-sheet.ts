@@ -53,6 +53,7 @@ const OCCASION_WORDS = [
 ];
 
 import { resolveProductExternalId } from "../../modules/product-catalog.js";
+import { buildEngagingCatalogDescription } from "../../modules/catalog-copy.js";
 
 function pickKeywords(text: string, dict: string[]): string[] {
   const lower = text.toLowerCase();
@@ -89,8 +90,13 @@ function parseProductName(cell: string): string {
     .trim();
 }
 
-function buildDescription(parts: string[]): string {
-  return parts.filter(Boolean).join("\n\n").slice(0, 4000);
+function buildDescription(parts: {
+  simple?: string;
+  idea?: string;
+  howItWorks?: string;
+  pain?: string;
+}): string {
+  return buildEngagingCatalogDescription(parts);
 }
 
 export function isRetroPressaSheet(csvText: string): boolean {
@@ -148,12 +154,12 @@ export function parseRetroPressaSheet(csvText: string): SheetGiftRow[] {
     gifts.push({
       externalId,
       name,
-      description: buildDescription([
-        simple && `Что это: ${simple}`,
-        idea && `Идея: ${idea}`,
-        howItWorks && `Как работает: ${howItWorks}`,
-        pain && `Закрывает потребность: ${pain}`,
-      ]),
+      description: buildDescription({
+        simple,
+        idea,
+        howItWorks,
+        pain,
+      }),
       priceMin: 0,
       priceMax: 0,
       emotions: pickKeywords(fullText, EMOTION_WORDS),
