@@ -5,6 +5,8 @@ export type BotScreen = "menu" | "catalog" | "consult";
 export type UserSession = {
   language: BotLanguage;
   screen: BotScreen;
+  /** Каталог во время консультации — не сбрасывать собранные поля. */
+  catalogFromConsult?: boolean;
   /** ID сообщений бота в текущем экране — удаляем при навигации или новом ответе. */
   botMessageIds?: number[];
 };

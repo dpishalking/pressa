@@ -16,6 +16,7 @@ import {
   buildManagerHandoff,
   hasHandoffBasics,
   stripPhoneCollectionAsk,
+  stripManagerContactMentions,
   type ManagerHandoff,
 } from "./manager-handoff.js";
 import { resolveNextStage } from "./stage-guide.js";
@@ -118,6 +119,110 @@ export class ChatEngine {
       stage: conv.stage,
       language: conv.fields.uiLanguage || "ru",
       conversationId: conv.id,
+    };
+  }
+
+  async switchConsultationGift(opts: {
+    channel: string;
+    channelUserId: string;
+    catalogGiftExternalId: string;
+    telegramUsername?: string;
+  }): Promise<{
+    reply: string;
+    conversationId: string;
+    stage: number;
+    recommendedGift: { id: string; externalId: string; name: string };
+    managerHandoff: ManagerHandoff;
+  }> {
+    const { channel, channelUserId, catalogGiftExternalId, telegramUsername } = opts;
+    const conv = conversationMemory.getOrCreate(channel, channelUserId);
+    const messages = conversationMemory.getMessages(conv.id);
+    if (!messages.some((m) => m.role === "assistant")) {
+      throw new Error("Консультация не начата");
+    }
+
+    const gift = knowledgeBase
+      .listGifts()
+      .find((g) => g.externalId === catalogGiftExternalId || g.id === catalogGiftExternalId);
+    if (!gift) throw new Error("Подарок не найден в каталоге");
+
+    const lang = normalizeLanguage(conv.fields.uiLanguage);
+    const displayName =
+      localizedProductName(gift.externalId, lang, defaultNameForExternalId(gift.externalId) ?? gift.name);
+    const pitch =
+      getLocalizedCatalogCard(gift.externalId, lang)?.description?.split(/[.!?]/)[0]?.trim() ||
+      gift.description.split(/[.!?]/)[0]?.trim() ||
+      gift.cases.slice(0, 120);
+
+    let fields = qualificationEngine.mergeFields(conv.fields, {
+      recommendedGiftId: gift.externalId || gift.id,
+      recommendedGiftName: displayName,
+      catalogGiftInterest: displayName,
+      recommendationReason: pitch,
+      comments: [conv.fields.comments, `Сменил выбор на: ${displayName}`].filter(Boolean).join("; "),
+    });
+
+    if (telegramUsername && !fields.telegram) {
+      fields = { ...fields, telegram: `@${telegramUsername.replace(/^@/, "")}` };
+    }
+
+    if (!hasHandoffBasics(fields)) {
+      throw new Error("Сначала завершите короткий опрос — не хватает данных заявки");
+    }
+
+    const managerHandoff = buildManagerHandoff(fields, lang);
+    const leadLine =
+      lang === "en"
+        ? `Great choice! I suggest «${displayName}» — ${pitch}.`
+        : `Отличный выбор! Предлагаю «${displayName}» — ${pitch}.`;
+    const reply = `${leadLine}\n\n${managerHandoff.prompt}`;
+
+    conversationMemory.addMessage(conv.id, "user", `[выбрал другой подарок из каталога: ${displayName}]`);
+    conversationMemory.update(conv.id, {
+      stage: 10,
+      fields,
+      status: "handoff",
+    });
+    conversationMemory.addMessage(conv.id, "assistant", reply);
+
+    return {
+      reply,
+      conversationId: conv.id,
+      stage: 10,
+      recommendedGift: { id: gift.id, externalId: gift.externalId, name: displayName },
+      managerHandoff,
+    };
+  }
+
+  getConsultationHandoff(channel: string, channelUserId: string): {
+    reply: string;
+    stage: number;
+    recommendedGift: { id: string; externalId: string; name: string } | null;
+    managerHandoff: ManagerHandoff;
+  } | null {
+    const conv = conversationMemory.getOrCreate(channel, channelUserId);
+    if (!hasHandoffBasics(conv.fields)) return null;
+
+    const lang = normalizeLanguage(conv.fields.uiLanguage);
+    const managerHandoff = buildManagerHandoff(conv.fields, lang);
+    const messages = conversationMemory.getMessages(conv.id);
+    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+    const reply = lastAssistant?.content || managerHandoff.prompt;
+
+    const gifts = knowledgeBase.listGifts();
+    const recommended = conv.fields.recommendedGiftId
+      ? gifts.find(
+          (g) => g.id === conv.fields.recommendedGiftId || g.externalId === conv.fields.recommendedGiftId,
+        )
+      : undefined;
+
+    return {
+      reply,
+      stage: conv.stage,
+      recommendedGift: recommended
+        ? { id: recommended.id, externalId: recommended.externalId, name: recommended.name }
+        : null,
+      managerHandoff,
     };
   }
 
@@ -243,9 +348,8 @@ export class ChatEngine {
 
     if (stage === 10 && hasHandoffBasics(mergedFields)) {
       managerHandoff = buildManagerHandoff(mergedFields, lang);
-      const cleaned = stripPhoneCollectionAsk(reply);
+      const cleaned = stripManagerContactMentions(stripPhoneCollectionAsk(reply));
       reply = cleaned ? `${cleaned}\n\n${managerHandoff.prompt}` : managerHandoff.prompt;
-      engine.isComplete = true;
       stage = 10;
     }
 
@@ -261,7 +365,7 @@ export class ChatEngine {
     let summary = conv.summary;
     let bitrixLeadId = conv.bitrixLeadId;
 
-    if (isComplete) {
+    if (managerHandoff && !conv.bitrixLeadId) {
       const transcript = conversationMemory.formatTranscript(conv.id);
       const payload = this.buildLeadPayload(conv, mergedFields, leadScore, leadScoreBand, transcript, summary);
       summary = await summaryGenerator.generate({ ...payload, aiSummary: "" });
@@ -270,7 +374,9 @@ export class ChatEngine {
       const crm = await crmAdapter.createLead(payload);
       bitrixLeadId = crm.leadId;
       this.storeLead(payload, crm.leadId, crmAdapter.name);
+    }
 
+    if (isComplete) {
       conversationMemory.update(conv.id, {
         stage: 10,
         fields: mergedFields,
@@ -286,6 +392,9 @@ export class ChatEngine {
         fields: mergedFields,
         leadScore,
         leadScoreBand,
+        status: managerHandoff ? "handoff" : "active",
+        summary,
+        bitrixLeadId,
       });
     }
 

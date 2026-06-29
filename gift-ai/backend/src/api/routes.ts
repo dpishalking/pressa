@@ -43,6 +43,41 @@ api.post("/chat/menu", async (c) => {
   return c.json(result);
 });
 
+api.get("/chat/handoff", (c) => {
+  const channel = c.req.query("channel");
+  const channelUserId = c.req.query("channelUserId");
+  if (!channel || !channelUserId) return c.json({ error: "channel and channelUserId required" }, 400);
+  const result = chatEngine.getConsultationHandoff(channel, channelUserId);
+  if (!result) return c.json({ error: "handoff not ready" }, 404);
+  return c.json(result);
+});
+
+api.post("/chat/switch-gift", async (c) => {
+  try {
+    const body = await c.req.json<{
+      channel: string;
+      channelUserId: string;
+      catalogGiftExternalId: string;
+      telegramUsername?: string;
+    }>();
+    const { channel, channelUserId, catalogGiftExternalId, telegramUsername } = body;
+    if (!channel || !channelUserId || !catalogGiftExternalId) {
+      return c.json({ error: "channel, channelUserId and catalogGiftExternalId required" }, 400);
+    }
+    const result = await chatEngine.switchConsultationGift({
+      channel,
+      channelUserId,
+      catalogGiftExternalId,
+      telegramUsername,
+    });
+    return c.json(result);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "unknown error";
+    console.error("[chat/switch-gift]", msg);
+    return c.json({ error: msg }, 400);
+  }
+});
+
 api.post("/chat/begin", async (c) => {
   const body = await c.req.json<{
     channel: string;

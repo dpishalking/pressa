@@ -139,7 +139,7 @@ export type Conversation = {
   fields: QualificationFields;
   leadScore: number;
   leadScoreBand: LeadScoreBand;
-  status: "active" | "completed" | "abandoned";
+  status: "active" | "handoff" | "completed" | "abandoned";
   summary: string;
   bitrixLeadId: string | null;
   createdAt: string;

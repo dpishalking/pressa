@@ -40,7 +40,7 @@ export class ConversationMemory {
     const db = getDb();
     const existing = db
       .prepare(
-        `SELECT * FROM conversations WHERE channel = ? AND channel_user_id = ? AND status = 'active' ORDER BY updated_at DESC LIMIT 1`,
+        `SELECT * FROM conversations WHERE channel = ? AND channel_user_id = ? AND status IN ('active', 'handoff') ORDER BY updated_at DESC LIMIT 1`,
       )
       .get(channel, channelUserId);
     if (existing) return rowToConversation(existing as Record<string, unknown>);
@@ -136,7 +136,7 @@ export class ConversationMemory {
   reset(channel: string, channelUserId: string): Conversation {
     const db = getDb();
     db.prepare(
-      `UPDATE conversations SET status = 'abandoned', updated_at = ? WHERE channel = ? AND channel_user_id = ? AND status = 'active'`,
+      `UPDATE conversations SET status = 'abandoned', updated_at = ? WHERE channel = ? AND channel_user_id = ? AND status IN ('active', 'handoff')`,
     ).run(new Date().toISOString(), channel, channelUserId);
     return this.getOrCreate(channel, channelUserId);
   }

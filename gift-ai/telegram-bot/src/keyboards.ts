@@ -5,10 +5,13 @@ import type { BotLanguage } from "./languages.js";
 import { t } from "./i18n.js";
 
 export function managerHandoffKeyboard(url: string, buttonLabel: string, lang: BotLanguage): InlineKeyboard {
+  const s = t(lang);
   return new InlineKeyboard()
     .url(buttonLabel, url)
     .row()
-    .text(t(lang).menuBack, "menu:main");
+    .text(s.catalogChooseAnother, "consult:catalog")
+    .row()
+    .text(s.menuBack, "menu:main");
 }
 
 export function mainMenuKeyboard(lang: BotLanguage): InlineKeyboard {
@@ -33,21 +36,29 @@ export function languageKeyboard(lang: BotLanguage): InlineKeyboard {
 export function catalogListKeyboard(
   items: { externalId: string; name: string }[],
   lang: BotLanguage,
+  opts?: { consult?: boolean },
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
+  const prefix = opts?.consult ? "cat:consult:view:" : "cat:view:";
   for (const item of items) {
-    kb.text(giftLabel(item.externalId, item.name), `cat:view:${item.externalId}`).row();
+    kb.text(giftLabel(item.externalId, item.name), `${prefix}${item.externalId}`).row();
   }
-  kb.text(t(lang).menuBack, "menu:main");
+  kb.text(opts?.consult ? t(lang).consultBack : t(lang).menuBack, opts?.consult ? "consult:back" : "menu:main");
   return kb;
 }
 
-export function catalogGiftKeyboard(externalId: string, lang: BotLanguage): InlineKeyboard {
+export function catalogGiftKeyboard(
+  externalId: string,
+  lang: BotLanguage,
+  opts?: { consult?: boolean },
+): InlineKeyboard {
   const s = t(lang);
+  const pickAction = opts?.consult ? `cat:consult:pick:${externalId}` : `cat:pick:${externalId}`;
+  const backAction = opts?.consult ? "consult:catalog" : "menu:catalog";
   return new InlineKeyboard()
-    .text(s.catalogPick, `cat:pick:${externalId}`)
+    .text(opts?.consult ? s.catalogPickConsult : s.catalogPick, pickAction)
     .row()
-    .text(s.catalogBack, "menu:catalog")
+    .text(s.catalogBack, backAction)
     .row()
     .text(s.menuBack, "menu:main");
 }

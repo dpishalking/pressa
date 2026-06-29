@@ -10,6 +10,10 @@ type Strings = {
   langSaved: (title: string) => string;
   catalogTitle: string;
   catalogPick: string;
+  catalogPickConsult: string;
+  catalogChooseAnother: string;
+  catalogKeepContextTitle: string;
+  consultBack: string;
   catalogBack: string;
   useMenuHint: string;
   consultRestarted: string;
@@ -26,6 +30,11 @@ const RU: Strings = {
   langSaved: (title) => `Язык общения: ${title}\n\nМожете вернуться в меню и начать подбор.`,
   catalogTitle: "📋 Каталог подарков Retro Pressa\n\nВыберите, что посмотреть подробнее:",
   catalogPick: "🎁 Подобрать этот подарок",
+  catalogPickConsult: "✅ Выбрать этот подарок",
+  catalogChooseAnother: "📋 Выбрать другой подарок из каталога",
+  catalogKeepContextTitle:
+    "📋 Каталог подарков\n\nВаши ответы сохранены — выберите другой вариант:",
+  consultBack: "⬅️ Назад к рекомендации",
   catalogBack: "⬅️ К каталогу",
   useMenuHint: "Выберите действие кнопками ниже или нажмите /start для меню.",
   consultRestarted: "Начали заново.",
@@ -43,6 +52,10 @@ const EN: Strings = {
   langSaved: (title) => `Chat language: ${title}\n\nGo back to the menu when you're ready.`,
   catalogTitle: "📋 Retro Pressa gift catalog\n\nTap a product to see more:",
   catalogPick: "🎁 Choose this gift",
+  catalogPickConsult: "✅ Choose this gift",
+  catalogChooseAnother: "📋 Pick another gift from catalog",
+  catalogKeepContextTitle: "📋 Gift catalog\n\nYour answers are saved — pick another option:",
+  consultBack: "⬅️ Back to recommendation",
   catalogBack: "⬅️ Back to catalog",
   useMenuHint: "Use the buttons below or send /start for the menu.",
   consultRestarted: "Starting over.",
@@ -60,6 +73,10 @@ const LV: Strings = {
   langSaved: (title) => `Sarunas valoda: ${title}\n\nAtgriezieties izvēlnē, kad esat gatavi.`,
   catalogTitle: "📋 Retro Pressa dāvanu katalogs\n\nIzvēlieties produktu:",
   catalogPick: "🎁 Izvēlēties šo dāvanu",
+  catalogPickConsult: "✅ Izvēlēties šo dāvanu",
+  catalogChooseAnother: "📋 Izvēlēties citu dāvanu no kataloga",
+  catalogKeepContextTitle: "📋 Dāvanu katalogs\n\nJūsu atbildes saglabātas — izvēlieties citu variantu:",
+  consultBack: "⬅️ Atpakaļ uz ieteikumu",
   catalogBack: "⬅️ Atpakaļ uz katalogu",
   useMenuHint: "Izmantojiet pogas vai /start izvēlnei.",
   consultRestarted: "Sākam no jauna.",
@@ -76,6 +93,10 @@ const ET: Strings = {
   langSaved: (title) => `Suhtluskeel: ${title}\n\nMenüüsse saate tagasi minna, kui olete valmis.`,
   catalogTitle: "📋 Retro Pressa kingikataloog\n\nValige toode:",
   catalogPick: "🎁 Vali see kingitus",
+  catalogPickConsult: "✅ Vali see kingitus",
+  catalogChooseAnother: "📋 Vali kataloogist teine kingitus",
+  catalogKeepContextTitle: "📋 Kingikataloog\n\nTeie vastused on salvestatud — valige teine variant:",
+  consultBack: "⬅️ Tagasi soovituse juurde",
   catalogBack: "⬅️ Tagasi kataloogi",
   useMenuHint: "Kasutage nuppe või saatke /start menüü jaoks.",
   consultRestarted: "Alustame uuesti.",
@@ -92,6 +113,10 @@ const LT: Strings = {
   langSaved: (title) => `Bendravimo kalba: ${title}\n\nGrįžkite į meniu, kai būsite pasiruošę.`,
   catalogTitle: "📋 Retro Pressa dovanų katalogas\n\nPasirinkite produktą:",
   catalogPick: "🎁 Rinktis šią dovaną",
+  catalogPickConsult: "✅ Rinktis šią dovaną",
+  catalogChooseAnother: "📋 Rinktis kitą dovaną iš katalogo",
+  catalogKeepContextTitle: "📋 Dovanų katalogas\n\nJūsų atsakymai išsaugoti — pasirinkite kitą variantą:",
+  consultBack: "⬅️ Atgal į rekomendaciją",
   catalogBack: "⬅️ Atgal į katalogą",
   useMenuHint: "Naudokite mygtukus arba /start meniu.",
   consultRestarted: "Pradedame iš naujo.",

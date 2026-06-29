@@ -134,7 +134,7 @@ async function showMainMenu(ctx: Context, language?: BotLanguage): Promise<void>
   const uid = channelUserId(ctx);
   const session = getSession(uid);
   const lang = language ?? session.language;
-  setSession(uid, { language: lang, screen: "menu" });
+  setSession(uid, { language: lang, screen: "menu", catalogFromConsult: false });
   shownGiftByUser.delete(uid);
 
   await resetBackendMenu(ctx);
@@ -145,11 +145,12 @@ async function showMainMenu(ctx: Context, language?: BotLanguage): Promise<void>
   });
 }
 
-async function showCatalog(ctx: Context): Promise<void> {
+async function showCatalog(ctx: Context, opts?: { fromConsult?: boolean }): Promise<void> {
   await clearBotScreen(ctx);
 
   const uid = channelUserId(ctx);
-  const { language } = setSession(uid, { screen: "catalog" });
+  const fromConsult = Boolean(opts?.fromConsult);
+  const { language } = setSession(uid, { screen: "catalog", catalogFromConsult: fromConsult });
   const s = t(language);
 
   const { items } = await apiGet<{ items: CatalogItem[] }>(`/catalog?lang=${language}`);
@@ -160,22 +161,24 @@ async function showCatalog(ctx: Context): Promise<void> {
     return;
   }
 
-  await sendTrackedReply(ctx, s.catalogTitle, {
-    reply_markup: catalogListKeyboard(items, language),
+  await sendTrackedReply(ctx, fromConsult ? s.catalogKeepContextTitle : s.catalogTitle, {
+    reply_markup: catalogListKeyboard(items, language, { consult: fromConsult }),
   });
 }
 
-async function showCatalogGift(ctx: Context, externalId: string): Promise<void> {
+async function showCatalogGift(ctx: Context, externalId: string, opts?: { fromConsult?: boolean }): Promise<void> {
   await clearBotScreen(ctx);
 
   const uid = channelUserId(ctx);
-  const { language } = getSession(uid);
+  const session = getSession(uid);
+  const fromConsult = Boolean(opts?.fromConsult ?? session.catalogFromConsult);
+  const { language } = session;
   const s = t(language);
 
   const { items } = await apiGet<{ items: CatalogItem[] }>(`/catalog?lang=${language}`);
   const gift = items.find((g) => g.externalId === externalId);
   if (!gift) {
-    await showCatalog(ctx);
+    await showCatalog(ctx, { fromConsult });
     return;
   }
 
@@ -183,10 +186,10 @@ async function showCatalogGift(ctx: Context, externalId: string): Promise<void> 
   const caption = `<b>${displayName}</b>\n\n💰 ${gift.priceLabel}`;
   const text = gift.description;
   const photo = giftPhotoPath(gift.externalId);
-  const markup = { reply_markup: catalogGiftKeyboard(gift.externalId, language) };
+  const markup = { reply_markup: catalogGiftKeyboard(gift.externalId, language, { consult: fromConsult }) };
 
   if (photo) {
-    shownGiftByUser.set(uid, gift.externalId);
+    if (!fromConsult) shownGiftByUser.set(uid, gift.externalId);
     await replyWithPhotoFile(ctx, photo, text, markup, {
       caption,
       followUp: gift.description,
@@ -196,12 +199,69 @@ async function showCatalogGift(ctx: Context, externalId: string): Promise<void> 
   }
 }
 
+async function showHandoffRecommendation(
+  ctx: Context,
+  result: {
+    reply: string;
+    stage: number;
+    recommendedGift?: RecommendedGift;
+    managerHandoff: { url: string; buttonLabel: string };
+  },
+): Promise<void> {
+  const uid = channelUserId(ctx);
+  const session = getSession(uid);
+  setSession(uid, { screen: "consult", catalogFromConsult: false });
+
+  const gift = result.recommendedGift ?? null;
+  const giftPhoto = gift ? giftPhotoPath(gift.externalId) : null;
+  const handoffMarkup = {
+    reply_markup: managerHandoffKeyboard(
+      result.managerHandoff.url,
+      result.managerHandoff.buttonLabel,
+      session.language,
+    ),
+  };
+
+  if (gift && giftPhoto) {
+    await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, { stage: result.stage });
+    shownGiftByUser.set(uid, gift.externalId);
+  } else {
+    const scene = sceneForStage(result.stage);
+    await replyWithMascot(ctx, result.reply, scene, handoffMarkup, { stage: result.stage });
+  }
+}
+
+async function switchConsultationGift(ctx: Context, externalId: string): Promise<void> {
+  await clearBotScreen(ctx);
+  await ctx.api.sendChatAction(ctx.chat!.id, "typing");
+
+  const result = await apiPost<ChatResponse & { managerHandoff: NonNullable<ChatResponse["managerHandoff"]> }>(
+    "/chat/switch-gift",
+    { ...apiIdentity(ctx), catalogGiftExternalId: externalId },
+  );
+
+  await showHandoffRecommendation(ctx, result);
+}
+
+async function showConsultHandoff(ctx: Context): Promise<void> {
+  const uid = channelUserId(ctx);
+  const result = await apiGet<{
+    reply: string;
+    stage: number;
+    recommendedGift?: RecommendedGift;
+    managerHandoff: { url: string; buttonLabel: string };
+  }>(`/chat/handoff?channel=telegram&channelUserId=${encodeURIComponent(uid)}`);
+
+  await clearBotScreen(ctx);
+  await showHandoffRecommendation(ctx, result);
+}
+
 async function beginConsultation(ctx: Context, catalogGiftExternalId?: string): Promise<void> {
   await clearBotScreen(ctx);
 
   const uid = channelUserId(ctx);
   const { language } = getSession(uid);
-  setSession(uid, { screen: "consult" });
+  setSession(uid, { screen: "consult", catalogFromConsult: false });
   if (catalogGiftExternalId) {
     shownGiftByUser.set(uid, catalogGiftExternalId);
   } else {
@@ -260,6 +320,11 @@ async function handleUserTextInner(ctx: Context, text: string): Promise<void> {
   } else {
     const scene = sceneForStage(result.stage, { isComplete: result.isComplete });
     await replyWithMascot(ctx, result.reply, scene, handoffMarkup, { stage: result.stage });
+  }
+
+  if (result.managerHandoff) {
+    setSession(uid, { screen: "consult", catalogFromConsult: false });
+    return;
   }
 
   if (result.isComplete) {
@@ -382,6 +447,16 @@ bot.on("callback_query:data", async (ctx) => {
       return;
     }
 
+    if (data === "consult:catalog") {
+      await showCatalog(ctx, { fromConsult: true });
+      return;
+    }
+
+    if (data === "consult:back") {
+      await showConsultHandoff(ctx);
+      return;
+    }
+
     if (data === "menu:lang") {
       await clearBotScreen(ctx);
       await sendTrackedReply(ctx, t(session.language).menuLang, {
@@ -405,8 +480,18 @@ bot.on("callback_query:data", async (ctx) => {
       return;
     }
 
+    if (data.startsWith("cat:consult:view:")) {
+      await showCatalogGift(ctx, data.slice("cat:consult:view:".length), { fromConsult: true });
+      return;
+    }
+
     if (data.startsWith("cat:pick:")) {
       await beginConsultation(ctx, data.slice("cat:pick:".length));
+      return;
+    }
+
+    if (data.startsWith("cat:consult:pick:")) {
+      await switchConsultationGift(ctx, data.slice("cat:consult:pick:".length));
       return;
     }
   } catch (e) {
