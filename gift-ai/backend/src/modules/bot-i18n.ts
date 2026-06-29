@@ -17,7 +17,7 @@ type Strings = {
 };
 
 const RU: Strings = {
-  menuWelcome: "Привет! Я Чернилька — помогу подобрать подарок Retro Pressa, от которого захватывает дух.",
+  menuWelcome: "Здравствуйте! Меня зовут Чернилька, я ассистент Retro-Pressa. Помогу подобрать подарок, который по-настоящему удивит вашего близкого человека.",
   menuPrompt: "Что хотите сделать?",
   menuConsult: "🎁 Подобрать подарок под ситуацию",
   menuCatalog: "📋 Выбрать из каталога",
@@ -34,7 +34,7 @@ const RU: Strings = {
 };
 
 const EN: Strings = {
-  menuWelcome: "Hi! I'm Chernilka — I'll help you find a Retro Pressa gift that truly moves people.",
+  menuWelcome: "Hello! My name is Chernilka, I'm a Retro-Pressa assistant. I'll help you choose a gift that will truly surprise your loved one.",
   menuPrompt: "What would you like to do?",
   menuConsult: "🎁 Find a gift for my situation",
   menuCatalog: "📋 Browse catalog",
@@ -51,7 +51,7 @@ const EN: Strings = {
 };
 
 const LV: Strings = {
-  menuWelcome: "Sveiki! Es esmu Černilka — palīdzēšu atrast Retro Pressa dāvanu, kas patiesi aizrauj.",
+  menuWelcome: "Sveiki! Mani sauc Černilka, esmu Retro-Pressa asistents. Palīdzēšu izvēlēties dāvanu, kas patiesi pārsteigs jūsu mīļoto cilvēku.",
   menuPrompt: "Ko vēlaties darīt?",
   menuConsult: "🎁 Piemeklēt dāvanu situācijai",
   menuCatalog: "📋 Izvēlēties no kataloga",
@@ -68,7 +68,7 @@ const LV: Strings = {
 };
 
 const ET: Strings = {
-  menuWelcome: "Tere! Olen Chernilka — aitan leida Retro Pressa kingi, mis tõeliselt liigutab.",
+  menuWelcome: "Tere! Minu nimi on Chernilka, olen Retro-Pressa assistent. Aitan valida kingi, mis tõeliselt üllatab teie lähedast inimest.",
   menuPrompt: "Mida soovite teha?",
   menuConsult: "🎁 Leia kingitus minu olukorda",
   menuCatalog: "📋 Vali kataloogist",
@@ -85,7 +85,7 @@ const ET: Strings = {
 };
 
 const LT: Strings = {
-  menuWelcome: "Sveiki! Aš Chernilka — padėsiu rasti Retro Pressa dovaną, kuri tikrai jaudina.",
+  menuWelcome: "Sveiki! Mano vardas Chernilka, esu Retro-Pressa asistentas. Padėsiu parinkti dovaną, kuri tikrai nustebins jūsų artimą žmogų.",
   menuPrompt: "Ką norite daryti?",
   menuConsult: "🎁 Parinkti dovaną situacijai",
   menuCatalog: "📋 Rinktis iš katalogo",

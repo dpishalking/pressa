@@ -147,6 +147,23 @@ function formatRecipient(fields: QualificationFields, lang: BotLanguage): string
   return parts.join(", ");
 }
 
+const MANAGER_CHAT_BASE = `https://t.me/${MANAGER_TELEGRAM_USERNAME}`;
+/** Лимит Telegram для url в inline-кнопках. */
+const MAX_TELEGRAM_URL_LEN = 2048;
+
+function capManagerUrl(draftMessage: string): string {
+  const full = `${MANAGER_CHAT_BASE}?text=${encodeURIComponent(draftMessage)}`;
+  if (full.length <= MAX_TELEGRAM_URL_LEN) return full;
+
+  let text = draftMessage;
+  while (text.length > 0) {
+    const candidate = `${MANAGER_CHAT_BASE}?text=${encodeURIComponent(`${text}…`)}`;
+    if (candidate.length <= MAX_TELEGRAM_URL_LEN) return candidate;
+    text = text.slice(0, Math.floor(text.length * 0.85));
+  }
+  return MANAGER_CHAT_BASE;
+}
+
 export function buildManagerDraftMessage(fields: QualificationFields, lang: BotLanguage): string {
   const L = LABELS[lang] ?? LABELS.ru;
   const recipient = formatRecipient(fields, lang);
@@ -168,7 +185,7 @@ export function buildManagerDraftMessage(fields: QualificationFields, lang: BotL
 export function buildManagerHandoff(fields: QualificationFields, lang: BotLanguage): ManagerHandoff {
   const L = LABELS[lang] ?? LABELS.ru;
   const draftMessage = buildManagerDraftMessage(fields, lang);
-  const url = `https://t.me/${MANAGER_TELEGRAM_USERNAME}?text=${encodeURIComponent(draftMessage)}`;
+  const url = capManagerUrl(draftMessage);
   return {
     url,
     buttonLabel: L.button,
