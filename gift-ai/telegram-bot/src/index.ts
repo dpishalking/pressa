@@ -2,6 +2,7 @@ import { Bot, GrammyError, type Context } from "grammy";
 import { configureBotProfile } from "./bot-profile.js";
 import { giftLabel } from "./gift-emojis.js";
 import { giftPhotoPath } from "./gift-photos.js";
+import { managerLinkHtml } from "./handoff.js";
 import { smartFormatReply } from "./format.js";
 import { t } from "./i18n.js";
 import {
@@ -9,10 +10,10 @@ import {
   catalogListKeyboard,
   languageKeyboard,
   mainMenuKeyboard,
-  managerHandoffKeyboard,
+  handoffActionsKeyboard,
 } from "./keyboards.js";
 import { languageTitle, normalizeLanguage, type BotLanguage } from "./languages.js";
-import { resetMascotRotation, sceneForStage } from "./mascot.js";
+import { logMascotInventory, resetMascotRotation, sceneForStage } from "./mascot.js";
 import { replyWithMascot, replyWithPhotoFile } from "./reply-with-mascot.js";
 import { clearBotScreen, rewindBotMessages, trackBotMessage, userIdFromCtx } from "./message-cleanup.js";
 import { enqueueUserTask } from "./user-queue.js";
@@ -237,21 +238,21 @@ async function showHandoffRecommendation(
     screen: "consult",
     catalogFromConsult: false,
     pendingHandoffUrl: result.managerHandoff.url,
+    pendingHandoffButtonLabel: result.managerHandoff.buttonLabel,
     pendingHandoffConversationId: result.conversationId,
   });
 
   const gift = result.recommendedGift ?? null;
   const giftPhoto = gift ? giftPhotoPath(gift.externalId) : null;
-  const handoffMarkup = {
-    reply_markup: managerHandoffKeyboard(result.managerHandoff.buttonLabel, session.language),
-  };
+  const handoffOpts = { stage: result.stage, managerHandoff: result.managerHandoff };
+  const handoffMarkup = { reply_markup: handoffActionsKeyboard(session.language) };
 
   if (gift && giftPhoto) {
-    await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, { stage: result.stage });
+    await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, handoffOpts);
     shownGiftByUser.set(uid, gift.externalId);
   } else {
     const scene = sceneForStage(result.stage);
-    await replyWithMascot(ctx, result.reply, scene, handoffMarkup, { stage: result.stage });
+    await replyWithMascot(ctx, result.reply, scene, handoffMarkup, handoffOpts);
   }
 }
 
@@ -269,15 +270,20 @@ async function switchConsultationGift(ctx: Context, externalId: string): Promise
 
 async function showConsultHandoff(ctx: Context): Promise<void> {
   const uid = channelUserId(ctx);
-  const result = await apiGet<{
-    reply: string;
-    stage: number;
-    recommendedGift?: RecommendedGift;
-    managerHandoff: { url: string; buttonLabel: string };
-  }>(`/chat/handoff?channel=telegram&channelUserId=${encodeURIComponent(uid)}`);
+  try {
+    const result = await apiGet<{
+      reply: string;
+      stage: number;
+      recommendedGift?: RecommendedGift;
+      managerHandoff: { url: string; buttonLabel: string };
+    }>(`/chat/handoff?channel=telegram&channelUserId=${encodeURIComponent(uid)}`);
 
-  await clearBotScreen(ctx);
-  await showHandoffRecommendation(ctx, result);
+    await clearBotScreen(ctx);
+    await showHandoffRecommendation(ctx, result);
+  } catch (e) {
+    console.error("[consult:back]", e);
+    await showMainMenu(ctx);
+  }
 }
 
 async function beginConsultation(ctx: Context, catalogGiftExternalId?: string): Promise<void> {
@@ -336,24 +342,18 @@ async function handleUserTextInner(ctx: Context, text: string): Promise<void> {
   const isNewGift = Boolean(gift && shownGiftByUser.get(uid) !== gift.externalId);
   const showGiftPhoto = Boolean(gift && giftPhoto && isNewGift && result.stage >= 8);
   const handoffMarkup = result.managerHandoff
-    ? {
-        reply_markup: managerHandoffKeyboard(result.managerHandoff.buttonLabel, session.language),
-      }
+    ? { reply_markup: handoffActionsKeyboard(session.language) }
     : undefined;
-
-  if (result.managerHandoff) {
-    setSession(uid, {
-      pendingHandoffUrl: result.managerHandoff.url,
-      pendingHandoffConversationId: result.conversationId,
-    });
-  }
+  const formatOpts = result.managerHandoff
+    ? { stage: result.stage, managerHandoff: result.managerHandoff }
+    : { stage: result.stage };
 
   if (showGiftPhoto && gift && giftPhoto) {
-    await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, { stage: result.stage });
+    await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, formatOpts);
     shownGiftByUser.set(uid, gift.externalId);
   } else {
     const scene = sceneForStage(result.stage, { isComplete: result.isComplete });
-    await replyWithMascot(ctx, result.reply, scene, handoffMarkup, { stage: result.stage });
+    await replyWithMascot(ctx, result.reply, scene, handoffMarkup, formatOpts);
   }
 
   if (result.managerHandoff) {
@@ -361,6 +361,7 @@ async function handleUserTextInner(ctx: Context, text: string): Promise<void> {
       screen: "consult",
       catalogFromConsult: false,
       pendingHandoffUrl: result.managerHandoff.url,
+      pendingHandoffButtonLabel: result.managerHandoff.buttonLabel,
       pendingHandoffConversationId: result.conversationId,
     });
     return;
@@ -485,6 +486,7 @@ bot.on("callback_query:data", async (ctx) => {
 
     if (data === "handoff:open") {
       const url = session.pendingHandoffUrl;
+      const label = session.pendingHandoffButtonLabel ?? "✉️ Написать менеджеру";
       if (!url) {
         await ctx.answerCallbackQuery({ text: "Ссылка устарела — нажмите /start" });
         return;
@@ -495,7 +497,13 @@ bot.on("callback_query:data", async (ctx) => {
         eventType: "manager_click",
         conversationId: session.pendingHandoffConversationId,
       });
-      await ctx.answerCallbackQuery({ url });
+      await ctx.answerCallbackQuery();
+      const html = `☎️ Нажмите ссылку ниже — откроется чат с менеджером:\n\n${managerLinkHtml({ url, buttonLabel: label })}`;
+      const msg = await ctx.reply(html, {
+        parse_mode: "HTML",
+        link_preview_options: { is_disabled: true },
+      });
+      trackBotMessage(uid, msg.message_id);
       return;
     }
 
@@ -587,7 +595,8 @@ bot.on("callback_query:data", async (ctx) => {
       return;
     }
   } catch (e) {
-    console.error("[callback]", e);
+    console.error("[callback]", data, e);
+    await ctx.answerCallbackQuery().catch(() => {});
     await ctx.reply("Что-то пошло не так. Попробуйте /start.");
   }
 });
@@ -634,6 +643,7 @@ await bot.api.deleteWebhook().catch(() => {});
 
 bot.start({
   onStart: async (botInfo) => {
+    logMascotInventory();
     console.log(`✅ @${botInfo.username} — gift consultant bot`);
     try {
       await configureBotProfile(bot.api);

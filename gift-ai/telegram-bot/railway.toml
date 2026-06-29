@@ -1,6 +1,6 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install"
+buildCommand = "npm install && test $(ls assets/mascot/*.jpg | wc -l | tr -d ' ') -ge 25"
 
 [deploy]
 startCommand = "npm run start"

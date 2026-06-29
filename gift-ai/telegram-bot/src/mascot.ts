@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -15,8 +15,6 @@ export type MascotScene =
   | "contacts"
   | "done";
 
-const ASSETS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "assets", "mascot");
-
 /** Несколько картинок на сцену — ротация без повтора подряд. */
 const SCENE_VARIANTS: Record<MascotScene, string[]> = {
   welcome: ["welcome", "welcome-2", "welcome-3"],
@@ -32,7 +30,24 @@ const SCENE_VARIANTS: Record<MascotScene, string[]> = {
   done: ["done", "done-2", "thanks"],
 };
 
-const lastPickByUserScene = new Map<string, string>();
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+function findAssetsDir(): string {
+  const candidates = [
+    path.join(MODULE_DIR, "..", "assets", "mascot"),
+    path.join(process.cwd(), "assets", "mascot"),
+    path.join(process.cwd(), "telegram-bot", "assets", "mascot"),
+  ];
+  for (const dir of candidates) {
+    if (existsSync(path.join(dir, "welcome.jpg"))) return dir;
+  }
+  return candidates[0];
+}
+
+const ASSETS_DIR = findAssetsDir();
+
+/** Индекс следующего варианта по пользователю и сцене (round-robin). */
+const nextVariantIndex = new Map<string, number>();
 
 /** Какая поза маскота подходит этапу консультации (1–10). */
 export function sceneForStage(stage: number, opts?: { isComplete?: boolean; isStart?: boolean }): MascotScene {
@@ -70,23 +85,41 @@ function resolveVariantPaths(scene: MascotScene): string[] {
     .filter((file) => existsSync(file));
 }
 
-/** Случайный вариант маскота; не повторяет последний для этого пользователя и сцены. */
+/** Следующий вариант маскота; перебирает все картинки сцены по кругу. */
 export function mascotImagePath(scene: MascotScene, userId?: string): string | null {
   const variants = resolveVariantPaths(scene);
   if (!variants.length) return null;
-  if (variants.length === 1) return variants[0];
+  if (!userId || variants.length === 1) return variants[0];
 
-  const key = userId ? `${userId}:${scene}` : "";
-  const last = key ? lastPickByUserScene.get(key) : undefined;
-  const pool = last ? variants.filter((v) => v !== last) : variants;
-  const picked = pool[Math.floor(Math.random() * pool.length)] ?? variants[0];
+  const key = `${userId}:${scene}`;
+  const idx = nextVariantIndex.get(key) ?? 0;
+  const picked = variants[idx % variants.length]!;
+  nextVariantIndex.set(key, (idx + 1) % variants.length);
 
-  if (key) lastPickByUserScene.set(key, picked);
+  if (process.env.LOG_MASCOT_PICK === "1") {
+    console.log("[mascot]", scene, path.basename(picked), `(${idx + 1}/${variants.length})`);
+  }
+
   return picked;
 }
 
 export function resetMascotRotation(userId: string): void {
   for (const scene of Object.keys(SCENE_VARIANTS) as MascotScene[]) {
-    lastPickByUserScene.delete(`${userId}:${scene}`);
+    nextVariantIndex.delete(`${userId}:${scene}`);
+  }
+}
+
+/** Лог при старте бота — проверка, что новые jpg реально на диске (Railway). */
+export function logMascotInventory(): void {
+  const scenes = Object.keys(SCENE_VARIANTS) as MascotScene[];
+  const counts = Object.fromEntries(scenes.map((scene) => [scene, resolveVariantPaths(scene).length]));
+  const onDisk = existsSync(ASSETS_DIR)
+    ? readdirSync(ASSETS_DIR).filter((f) => f.endsWith(".jpg")).length
+    : 0;
+  console.log(`🖼 Mascot dir: ${ASSETS_DIR}`);
+  console.log(`🖼 Mascot jpg on disk: ${onDisk} (expected ~28)`);
+  console.log(`🖼 Variants per scene:`, JSON.stringify(counts));
+  if (onDisk < 20) {
+    console.warn("⚠️ Мало файлов маскота — redeploy бота или проверьте assets/mascot в образе");
   }
 }
