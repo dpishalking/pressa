@@ -13,6 +13,7 @@ import { languageTitle, normalizeLanguage, type BotLanguage } from "./languages.
 import { sceneForStage } from "./mascot.js";
 import { replyWithMascot, replyWithPhotoFile } from "./reply-with-mascot.js";
 import { clearBotScreen, rewindBotMessages, trackBotMessage, userIdFromCtx } from "./message-cleanup.js";
+import { enqueueUserTask } from "./user-queue.js";
 import { getSession, setSession } from "./session.js";
 import { isTranscribeAvailable, mimeForTelegramAudio, transcribeTelegramFile } from "./transcribe.js";
 
@@ -216,6 +217,11 @@ async function beginConsultation(ctx: Context, catalogGiftExternalId?: string): 
 
 async function handleUserText(ctx: Context, text: string): Promise<void> {
   const uid = channelUserId(ctx);
+  await enqueueUserTask(uid, () => handleUserTextInner(ctx, text));
+}
+
+async function handleUserTextInner(ctx: Context, text: string): Promise<void> {
+  const uid = channelUserId(ctx);
   const session = getSession(uid);
 
   if (!(await syncConsultScreen(ctx))) {
@@ -226,6 +232,7 @@ async function handleUserText(ctx: Context, text: string): Promise<void> {
     return;
   }
 
+  await rewindBotMessages(ctx);
   await ctx.api.sendChatAction(ctx.chat!.id, "typing");
   const result = await apiPost<ChatResponse & { isComplete: boolean }>("/chat/message", {
     ...apiIdentity(ctx),
@@ -236,8 +243,6 @@ async function handleUserText(ctx: Context, text: string): Promise<void> {
     await showMainMenu(ctx);
     return;
   }
-
-  await rewindBotMessages(ctx);
 
   const gift = result.recommendedGift ?? null;
   const giftPhoto = gift ? giftPhotoPath(gift.externalId) : null;
