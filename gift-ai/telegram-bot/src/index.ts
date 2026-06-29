@@ -1,6 +1,8 @@
 import { Bot } from "grammy";
+import { giftPhotoPath } from "./gift-photos.js";
+import { smartFormatReply } from "./format.js";
 import { sceneForStage } from "./mascot.js";
-import { replyWithMascot } from "./reply-with-mascot.js";
+import { replyWithMascot, replyWithPhotoFile } from "./reply-with-mascot.js";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const API_URL = (process.env.API_URL ?? "http://localhost:3100").replace(/\/$/, "");
@@ -15,11 +17,17 @@ const STICKER_PACK_URL =
 
 const bot = new Bot(BOT_TOKEN);
 
+type RecommendedGift = { id: string; externalId: string; name: string } | null;
+
 type ChatResponse = {
   reply: string;
   stage: number;
   isComplete?: boolean;
+  recommendedGift?: RecommendedGift;
 };
+
+// Какой подарок уже показан фото-карточкой пользователю — чтобы не дублировать.
+const shownGiftByUser = new Map<string, string>();
 
 async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
@@ -44,6 +52,7 @@ function telegramUsername(ctx: { from?: { username?: string } }): string | undef
 
 bot.command("start", async (ctx) => {
   try {
+    shownGiftByUser.delete(channelUserId(ctx));
     const { reply } = await apiPost<ChatResponse>("/chat/start", {
       channel: "telegram",
       channelUserId: channelUserId(ctx),
@@ -57,11 +66,12 @@ bot.command("start", async (ctx) => {
 });
 
 bot.command("stickers", async (ctx) => {
-  await ctx.reply(`🎨 Стикеры с Пресся:\n${STICKER_PACK_URL}`);
+  await ctx.reply(smartFormatReply(`🎨 Стикеры с Пресся:\n${STICKER_PACK_URL}`), { parse_mode: "HTML" });
 });
 
 bot.command("cancel", async (ctx) => {
   try {
+    shownGiftByUser.delete(channelUserId(ctx));
     const { reply } = await apiPost<ChatResponse>("/chat/start", {
       channel: "telegram",
       channelUserId: channelUserId(ctx),
@@ -86,12 +96,25 @@ bot.on("message:text", async (ctx) => {
       telegramUsername: telegramUsername(ctx),
     });
 
-    const scene = sceneForStage(result.stage, { isComplete: result.isComplete });
-    await replyWithMascot(ctx, result.reply, scene);
+    const uid = channelUserId(ctx);
+    const gift = result.recommendedGift ?? null;
+    const giftPhoto = gift ? giftPhotoPath(gift.externalId) : null;
+    const isNewGift = Boolean(gift && shownGiftByUser.get(uid) !== gift.externalId);
+
+    if (gift && giftPhoto && isNewGift) {
+      await replyWithPhotoFile(ctx, giftPhoto, result.reply);
+      shownGiftByUser.set(uid, gift.externalId);
+    } else {
+      const scene = sceneForStage(result.stage, { isComplete: result.isComplete });
+      await replyWithMascot(ctx, result.reply, scene);
+    }
 
     if (result.isComplete) {
       await ctx.reply(
-        "✅ Вся информация передана менеджеру. Он свяжется с вами и поможет оформить заказ — без повторных вопросов.",
+        smartFormatReply(
+          "✅ Вся информация передана менеджеру. Он свяжется с вами и поможет оформить заказ — без повторных вопросов.",
+        ),
+        { parse_mode: "HTML" },
       );
     }
   } catch (e) {
