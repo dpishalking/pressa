@@ -1,3 +1,4 @@
+import { menuWelcomeText } from "./bot-profile.js";
 import type { BotLanguage } from "./languages.js";
 
 type Strings = {
@@ -21,7 +22,7 @@ type Strings = {
 };
 
 const RU: Strings = {
-  menuWelcome: "Привет! Я Чернилька — помогу подобрать подарок Retro Pressa, от которого захватывает дух.",
+  menuWelcome: menuWelcomeText("ru"),
   menuPrompt: "Что хотите сделать?",
   menuConsult: "🎁 Подобрать подарок под ситуацию",
   menuCatalog: "📋 Выбрать из каталога",
@@ -43,7 +44,7 @@ const RU: Strings = {
 };
 
 const EN: Strings = {
-  menuWelcome: "Hi! I'm Chernilka — I'll help you find a Retro Pressa gift that truly moves people.",
+  menuWelcome: menuWelcomeText("en"),
   menuPrompt: "What would you like to do?",
   menuConsult: "🎁 Find a gift for my situation",
   menuCatalog: "📋 Browse catalog",
@@ -64,7 +65,7 @@ const EN: Strings = {
 };
 
 const LV: Strings = {
-  menuWelcome: "Sveiki! Es esmu Černilka — palīdzēšu atrast Retro Pressa dāvanu, kas patiesi aizrauj.",
+  menuWelcome: menuWelcomeText("lv"),
   menuPrompt: "Ko vēlaties darīt?",
   menuConsult: "🎁 Piemeklēt dāvanu situācijai",
   menuCatalog: "📋 Izvēlēties no kataloga",
@@ -84,7 +85,7 @@ const LV: Strings = {
 };
 
 const ET: Strings = {
-  menuWelcome: "Tere! Olen Chernilka — aitan leida Retro Pressa kingi, mis tõeliselt liigutab.",
+  menuWelcome: menuWelcomeText("et"),
   menuPrompt: "Mida soovite teha?",
   menuConsult: "🎁 Leia kingitus minu olukorda",
   menuCatalog: "📋 Vali kataloogist",
@@ -104,7 +105,7 @@ const ET: Strings = {
 };
 
 const LT: Strings = {
-  menuWelcome: "Sveiki! Aš Chernilka — padėsiu rasti Retro Pressa dovaną, kuri tikrai jaudina.",
+  menuWelcome: menuWelcomeText("lt"),
   menuPrompt: "Ką norite daryti?",
   menuConsult: "🎁 Parinkti dovaną situacijai",
   menuCatalog: "📋 Rinktis iš katalogo",
