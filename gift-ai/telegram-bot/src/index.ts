@@ -10,6 +10,9 @@ if (!BOT_TOKEN) {
   process.exit(1);
 }
 
+const STICKER_PACK_URL =
+  process.env.STICKER_PACK_URL ?? "https://t.me/addstickers/retro_pressa_gifts_by_rpgifts_bot";
+
 const bot = new Bot(BOT_TOKEN);
 
 type ChatResponse = {
@@ -51,6 +54,10 @@ bot.command("start", async (ctx) => {
     console.error(e);
     await ctx.reply("Сервис временно недоступен. Попробуйте позже.");
   }
+});
+
+bot.command("stickers", async (ctx) => {
+  await ctx.reply(`🎨 Стикеры с Пресся:\n${STICKER_PACK_URL}`);
 });
 
 bot.command("cancel", async (ctx) => {

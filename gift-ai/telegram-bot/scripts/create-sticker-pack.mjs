@@ -4,23 +4,22 @@
  *
  * Требования:
  * - BOT_TOKEN в .env
- * - STICKER_OWNER_TELEGRAM_ID — ваш Telegram user id (должны хотя бы раз написать боту /start)
+ * - STICKER_OWNER_TELEGRAM_ID — ваш Telegram user id (напишите боту /start хотя бы раз)
  *
  * Запуск: npm run stickers:create
  */
-import { createReadStream, existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
-import { FormData, File } from "node:buffer";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 const MASCOT_DIR = path.join(ROOT, "assets", "mascot");
 const STICKER_DIR = path.join(MASCOT_DIR, "stickers");
 
-const STICKERS: { file: string; emoji: string[] }[] = [
+const STICKERS = [
   { file: "welcome", emoji: ["👋", "😊"] },
   { file: "occasion", emoji: ["🎉", "🎂"] },
   { file: "recipient", emoji: ["👤", "🙂"] },
@@ -40,36 +39,32 @@ const STICKERS: { file: string; emoji: string[] }[] = [
 function loadEnv() {
   const envPath = path.join(ROOT, ".env");
   if (!existsSync(envPath)) return;
-  for (const line of readFileSync(envPath).split("\n")) {
+  for (const line of readFileSync(envPath, "utf8").split("\n")) {
     const m = line.match(/^([^#=]+)=(.*)$/);
     if (m && !process.env[m[1].trim()]) process.env[m[1].trim()] = m[2].trim();
   }
 }
 
-function readFileSync(p: string) {
-  return require("node:fs").readFileSync(p, "utf8") as string;
-}
-
-async function botUsername(token: string): Promise<string> {
+async function botUsername(token) {
   const res = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-  const data = (await res.json()) as { ok: boolean; result?: { username?: string } };
+  const data = await res.json();
   if (!data.ok || !data.result?.username) throw new Error("getMe failed");
   return data.result.username;
 }
 
-function buildWebp(sourceJpg: string, destWebp: string) {
+function buildWebp(sourceJpg, destWebp) {
   execSync(`npx --yes sharp-cli -i "${sourceJpg}" -o "${destWebp}" resize 512 512`, {
     stdio: "pipe",
     cwd: ROOT,
   });
 }
 
-async function apiMultipart(token: string, method: string, fields: Record<string, string>, files: Record<string, string>) {
+async function apiMultipart(token, method, fields, files) {
   const form = new FormData();
   for (const [k, v] of Object.entries(fields)) form.append(k, v);
   for (const [k, filePath] of Object.entries(files)) {
     const buf = await readFile(filePath);
-    form.append(k, new File([buf], path.basename(filePath), { type: "image/webp" }));
+    form.append(k, new Blob([buf], { type: "image/webp" }), path.basename(filePath));
   }
   const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, { method: "POST", body: form });
   const data = await res.json();
@@ -82,11 +77,11 @@ async function main() {
   const token = process.env.BOT_TOKEN;
   const ownerId = process.env.STICKER_OWNER_TELEGRAM_ID;
   if (!token) throw new Error("BOT_TOKEN не задан в .env");
-  if (!ownerId) throw new Error("STICKER_OWNER_TELEGRAM_ID не задан в .env (ваш Telegram user id)");
+  if (!ownerId) throw new Error("STICKER_OWNER_TELEGRAM_ID не задан в .env");
 
   mkdirSync(STICKER_DIR, { recursive: true });
 
-  const prepared: { file: string; emoji: string[]; webp: string }[] = [];
+  const prepared = [];
   for (const s of STICKERS) {
     const jpg = path.join(MASCOT_DIR, `${s.file}.jpg`);
     const webp = path.join(STICKER_DIR, `${s.file}.webp`);
