@@ -8,6 +8,7 @@ import { config } from "../config.js";
 import { listCanonicalProductsWithPhotos } from "../modules/gift-photos.js";
 import { normalizeLanguage } from "../modules/languages.js";
 import { transcribeAudioBase64 } from "../integrations/ai/transcribe.js";
+import { seedGifts } from "../seed.js";
 
 export const api = new Hono();
 
@@ -161,6 +162,17 @@ admin.patch("/gifts/:id", async (c) => {
 admin.delete("/gifts/:id", (c) => {
   const ok = knowledgeBase.deleteGift(c.req.param("id"));
   return c.json({ ok });
+});
+
+admin.post("/seed", (c) => {
+  const force = c.req.query("force") === "1" || c.req.query("force") === "true";
+  try {
+    seedGifts({ replace: force });
+    return c.json({ ok: true, count: knowledgeBase.listGifts().length, replaced: force });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
 });
 
 admin.post("/sync-sheets", async (c) => {
