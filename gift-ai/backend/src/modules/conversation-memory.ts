@@ -8,6 +8,7 @@ import type {
   QualificationFields,
 } from "../types/index.js";
 import { EMPTY_QUALIFICATION } from "../types/index.js";
+import { sanitizeAssistantMessage } from "./engine-response-parser.js";
 
 function parseFields(json: string): QualificationFields {
   try {
@@ -125,7 +126,10 @@ export class ConversationMemory {
 
   formatTranscript(conversationId: string): string {
     return this.getMessages(conversationId)
-      .map((m) => `${m.role === "user" ? "Клиент" : "Ассистент"}: ${m.content}`)
+      .map((m) => {
+        const content = m.role === "assistant" ? sanitizeAssistantMessage(m.content) : m.content;
+        return `${m.role === "user" ? "Клиент" : "Ассистент"}: ${content}`;
+      })
       .join("\n\n");
   }
 

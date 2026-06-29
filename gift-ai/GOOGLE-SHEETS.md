@@ -43,6 +43,24 @@
 
 ## 3. Получить ссылку для бота
 
+### Вариант А — все листы автоматически (рекомендуется)
+
+Скопируйте **ID таблицы** из URL:
+
+```
+https://docs.google.com/spreadsheets/d/ВОТ_ЭТОТ_ID/edit
+```
+
+На Railway добавьте переменную:
+
+```
+GOOGLE_SHEET_ID=1hLYcO6_knzWrfz6RWuHkQPuJoRajiy1XM9Z1aqHcQ98
+```
+
+Бот сам подтянет **все вкладки** (Паспорта, Подписка, Газеты и т.д.).
+
+### Вариант Б — один лист (CSV)
+
 Из URL таблицы:
 ```
 https://docs.google.com/spreadsheets/d/ВОТ_ЭТОТ_ID/edit#gid=0
@@ -59,10 +77,22 @@ https://docs.google.com/spreadsheets/d/ВОТ_ЭТОТ_ID/export?format=csv&gid=
 
 ## 4. Подключить на Railway
 
-Сервис **pressa** (API) → **Variables**:
+Сервис **pressa** (API) → **Variables** (один из вариантов):
 
+**Все листы:**
 ```
-GOOGLE_SHEET_CSV_URL = https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=0
+GOOGLE_SHEET_ID=1hLYcO6_knzWrfz6RWuHkQPuJoRajiy1XM9Z1aqHcQ98
+```
+
+**Или один лист:**
+```
+GOOGLE_SHEET_CSV_URL=https://docs.google.com/spreadsheets/d/.../export?format=csv&gid=0
+```
+
+**Или выбранные листы по gid:**
+```
+GOOGLE_SHEET_ID=1hLYcO6_knzWrfz6RWuHkQPuJoRajiy1XM9Z1aqHcQ98
+GOOGLE_SHEET_GIDS=0,603520412
 ```
 
 **Redeploy** — при старте каталог подтянется из таблицы.

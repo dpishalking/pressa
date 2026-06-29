@@ -4,9 +4,11 @@ import { crmAdapter } from "../integrations/crm/factory.js";
 import { logger } from "../logger.js";
 import { conversationMemory } from "./conversation-memory.js";
 import { emotionAnalyzer } from "./emotion-analyzer.js";
+import { isTruncatedReply, sanitizeAssistantMessage } from "./engine-response-parser.js";
 import { knowledgeBase } from "./knowledge-base.js";
 import { leadScoring, recommendationEngine, scoreToBand } from "./lead-scoring.js";
 import { qualificationEngine } from "./qualification-engine.js";
+import { isRepeatRequest } from "./stage-guide.js";
 import { summaryGenerator } from "./summary-generator.js";
 import type { Conversation, LeadPayload, QualificationFields } from "../types/index.js";
 
@@ -14,7 +16,11 @@ const GREETING =
   "Привет! Я помогу подобрать необычный подарок — такой, от которого действительно захватывает дух.\n\nДля начала — по какому поводу выбираете подарок?";
 
 export class ChatEngine {
-  async start(channel: string, channelUserId: string, telegramUsername?: string): Promise<{ reply: string; conversationId: string }> {
+  async start(
+    channel: string,
+    channelUserId: string,
+    telegramUsername?: string,
+  ): Promise<{ reply: string; conversationId: string; stage: number }> {
     const conv = conversationMemory.reset(channel, channelUserId);
     if (telegramUsername) {
       conversationMemory.update(conv.id, {
@@ -22,7 +28,7 @@ export class ChatEngine {
       });
     }
     conversationMemory.addMessage(conv.id, "assistant", GREETING);
-    return { reply: GREETING, conversationId: conv.id };
+    return { reply: GREETING, conversationId: conv.id, stage: 1 };
   }
 
   async handleMessage(opts: {
@@ -30,7 +36,7 @@ export class ChatEngine {
     channelUserId: string;
     text: string;
     telegramUsername?: string;
-  }): Promise<{ reply: string; conversationId: string; isComplete: boolean }> {
+  }): Promise<{ reply: string; conversationId: string; isComplete: boolean; stage: number }> {
     const { channel, channelUserId, text, telegramUsername } = opts;
     let conv = conversationMemory.getOrCreate(channel, channelUserId);
 
@@ -41,6 +47,14 @@ export class ChatEngine {
     }
 
     conversationMemory.addMessage(conv.id, "user", text);
+
+    if (isRepeatRequest(text)) {
+      const repeatReply = this.buildRepeatReply(conv.id);
+      if (repeatReply) {
+        conversationMemory.addMessage(conv.id, "assistant", repeatReply);
+        return { reply: repeatReply, conversationId: conv.id, isComplete: false, stage: conv.stage };
+      }
+    }
 
     const emotion = emotionAnalyzer.analyze(text);
     const history = conversationMemory.formatTranscript(conv.id);
@@ -115,7 +129,24 @@ export class ChatEngine {
 
     conversationMemory.addMessage(conv.id, "assistant", engine.reply);
 
-    return { reply: engine.reply, conversationId: conv.id, isComplete };
+    return {
+      reply: engine.reply,
+      conversationId: conv.id,
+      isComplete,
+      stage: isComplete ? 10 : engine.stage,
+    };
+  }
+
+  private buildRepeatReply(conversationId: string): string | null {
+    const messages = conversationMemory.getMessages(conversationId);
+    for (let i = messages.length - 2; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role !== "assistant") continue;
+      const cleaned = sanitizeAssistantMessage(m.content);
+      if (!cleaned || cleaned === GREETING || isTruncatedReply(cleaned)) continue;
+      return `Конечно! Повторю:\n\n${cleaned}`;
+    }
+    return null;
   }
 
   private buildLeadPayload(

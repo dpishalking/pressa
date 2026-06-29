@@ -8,6 +8,7 @@ import {
   ensureForwardReply,
   isCatalogQuestion,
   isNudgeMessage,
+  isRepeatRequest,
   resolveNextStage,
 } from "./stage-guide.js";
 import type { Conversation, EngineResponse, QualificationFields } from "../types/index.js";
@@ -23,7 +24,9 @@ function buildUserPrompt(opts: {
   const catalog = knowledgeBase.formatForPrompt();
 
   const stageHint = buildStageHint(conversation.fields, conversation.stage);
-  const userNote = isNudgeMessage(userMessage)
+  const userNote = isRepeatRequest(userMessage)
+    ? `Клиент не понял предыдущий ответ и просит повторить. НЕ начинай диалог заново. НЕ спрашивай повод или получателя с нуля — всё это уже собрано (этап ${conversation.stage}). Повтори последнюю рекомендацию или вопрос проще и короче. Если предыдущий ответ оборвался — закончи мысль и дай полный ответ.`
+    : isNudgeMessage(userMessage)
     ? "Клиент ждёт продолжения («что дальше») — продолжи консультацию, извинись кратко и задай следующий вопрос."
     : isCatalogQuestion(userMessage)
       ? "Клиент хочет увидеть каталог сразу — объясни, что подберёшь точнее после пары вопросов, и задай текущий вопрос."

@@ -161,3 +161,20 @@ export function parseEngineResponse(raw: string): EngineResponse {
     throw new Error("unable to parse engine response");
   }
 }
+
+export function sanitizeAssistantMessage(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("{") || !trimmed.includes('"reply"')) return trimmed;
+  try {
+    return parseEngineResponse(trimmed).reply;
+  } catch {
+    return extractReplyField(trimmed) ?? trimmed;
+  }
+}
+
+export function isTruncatedReply(text: string): boolean {
+  const t = text.trim();
+  if (!t) return true;
+  if (t.startsWith("{") || t.includes('"reply"')) return true;
+  return t.length > 80 && !/[.!?…»"')\]]\s*$/.test(t);
+}

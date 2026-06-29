@@ -68,6 +68,13 @@ export function isNudgeMessage(text: string): boolean {
   return NUDGE_RE.test(text.trim());
 }
 
+const REPEAT_RE =
+  /не понял|не поняла|не понятно|неясно|повтори|повторите|ещ[её] раз|объясни|объясните|что ты имел|что вы имели|переформулируй|скажи иначе|не расслышал/i;
+
+export function isRepeatRequest(text: string): boolean {
+  return REPEAT_RE.test(text.trim());
+}
+
 const CATALOG_PITCH_RE = /что у вас|что можете|покажите|какие варианты|что есть|что предлагаете|прайс|каталог/i;
 
 export function isCatalogQuestion(text: string): boolean {

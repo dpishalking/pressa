@@ -1,4 +1,6 @@
 import { Bot } from "grammy";
+import { sceneForStage } from "./mascot.js";
+import { replyWithMascot } from "./reply-with-mascot.js";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const API_URL = (process.env.API_URL ?? "http://localhost:3100").replace(/\/$/, "");
@@ -9,6 +11,12 @@ if (!BOT_TOKEN) {
 }
 
 const bot = new Bot(BOT_TOKEN);
+
+type ChatResponse = {
+  reply: string;
+  stage: number;
+  isComplete?: boolean;
+};
 
 async function apiPost<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
@@ -33,12 +41,12 @@ function telegramUsername(ctx: { from?: { username?: string } }): string | undef
 
 bot.command("start", async (ctx) => {
   try {
-    const { reply } = await apiPost<{ reply: string }>("/chat/start", {
+    const { reply } = await apiPost<ChatResponse>("/chat/start", {
       channel: "telegram",
       channelUserId: channelUserId(ctx),
       telegramUsername: telegramUsername(ctx),
     });
-    await ctx.reply(reply);
+    await replyWithMascot(ctx, reply, sceneForStage(1, { isStart: true }));
   } catch (e) {
     console.error(e);
     await ctx.reply("Сервис временно недоступен. Попробуйте позже.");
@@ -47,12 +55,12 @@ bot.command("start", async (ctx) => {
 
 bot.command("cancel", async (ctx) => {
   try {
-    const { reply } = await apiPost<{ reply: string }>("/chat/start", {
+    const { reply } = await apiPost<ChatResponse>("/chat/start", {
       channel: "telegram",
       channelUserId: channelUserId(ctx),
       telegramUsername: telegramUsername(ctx),
     });
-    await ctx.reply("Начали заново.\n\n" + reply);
+    await replyWithMascot(ctx, "Начали заново.\n\n" + reply, sceneForStage(1, { isStart: true }));
   } catch {
     await ctx.reply("Не удалось сбросить диалог.");
   }
@@ -64,13 +72,16 @@ bot.on("message:text", async (ctx) => {
 
   try {
     await ctx.api.sendChatAction(ctx.chat.id, "typing");
-    const result = await apiPost<{ reply: string; isComplete: boolean }>("/chat/message", {
+    const result = await apiPost<ChatResponse & { isComplete: boolean }>("/chat/message", {
       channel: "telegram",
       channelUserId: channelUserId(ctx),
       text,
       telegramUsername: telegramUsername(ctx),
     });
-    await ctx.reply(result.reply);
+
+    const scene = sceneForStage(result.stage, { isComplete: result.isComplete });
+    await replyWithMascot(ctx, result.reply, scene);
+
     if (result.isComplete) {
       await ctx.reply(
         "✅ Вся информация передана менеджеру. Он свяжется с вами и поможет оформить заказ — без повторных вопросов.",
