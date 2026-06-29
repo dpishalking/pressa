@@ -6,6 +6,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   GEMINI_API_KEY: z.string().optional().default(""),
   GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
+  GEMINI_MODEL_FALLBACK: z.string().default("gemini-2.0-flash"),
   DATABASE_PATH: z.string().default("./data/gift-ai.db"),
   BITRIX24_WEBHOOK_URL: z.string().optional().default(""),
   BITRIX24_TAG: z.string().default("Подбор подарка AI"),

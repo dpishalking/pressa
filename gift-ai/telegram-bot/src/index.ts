@@ -96,6 +96,11 @@ bot.on("message:text", async (ctx) => {
     }
   } catch (e) {
     console.error(e);
+    const msg = e instanceof Error ? e.message : "";
+    if (/503|429|UNAVAILABLE|high demand/i.test(msg)) {
+      await ctx.reply("Сейчас AI перегружен. Подождите 10–20 секунд и отправьте сообщение ещё раз — я на месте.");
+      return;
+    }
     await ctx.reply("Не удалось обработать сообщение. Попробуйте ещё раз.");
   }
 });

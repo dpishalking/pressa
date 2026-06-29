@@ -85,9 +85,11 @@ function finalizeResponse(
   return parsed;
 }
 
-function fallbackResponse(conversation: Conversation): ReturnType<typeof parseEngineResponse> {
+function fallbackResponse(conversation: Conversation, userMessage?: string): ReturnType<typeof parseEngineResponse> {
   const stage = resolveNextStage(conversation.fields, conversation.stage);
-  const reply = ensureForwardReply("Понял. Давайте продолжим.", stage, conversation.fields, false);
+  const snippet = userMessage?.trim().slice(0, 100);
+  const ack = snippet ? `Понял: «${snippet}». ` : "Понял. ";
+  const reply = ensureForwardReply(`${ack}Давайте продолжим.`, stage, conversation.fields, false);
   return {
     reply,
     stage,
@@ -111,29 +113,35 @@ export class QualificationEngine {
     const userPrompt = buildUserPrompt(opts);
     const attempts = [userPrompt, userPrompt + SHORT_REPLY_HINT];
 
-    for (let i = 0; i < attempts.length; i++) {
-      const { text: raw, finishReason } = await callGemini({
-        system: CONSULTANT_SYSTEM_PROMPT,
-        user: attempts[i],
-        json: true,
-      });
-
-      try {
-        const parsed = parseEngineResponse(raw);
-        return finalizeResponse(parsed, opts.conversation);
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "parse error";
-        logger.warn("Engine response parse failed", {
-          attempt: i + 1,
-          finishReason,
-          error: msg,
-          preview: raw.slice(0, 200),
+    try {
+      for (let i = 0; i < attempts.length; i++) {
+        const { text: raw, finishReason } = await callGemini({
+          system: CONSULTANT_SYSTEM_PROMPT,
+          user: attempts[i],
+          json: true,
         });
-        if (i < attempts.length - 1) continue;
+
+        try {
+          const parsed = parseEngineResponse(raw);
+          return finalizeResponse(parsed, opts.conversation);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "parse error";
+          logger.warn("Engine response parse failed", {
+            attempt: i + 1,
+            finishReason,
+            error: msg,
+            preview: raw.slice(0, 200),
+          });
+          if (i < attempts.length - 1) continue;
+        }
       }
+    } catch (e) {
+      logger.warn("Gemini unavailable, using stage fallback", {
+        error: e instanceof Error ? e.message : String(e),
+      });
     }
 
-    return fallbackResponse(opts.conversation);
+    return fallbackResponse(opts.conversation, opts.userMessage);
   }
 
   mergeFields = mergeFields;
