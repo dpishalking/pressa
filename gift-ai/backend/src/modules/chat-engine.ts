@@ -14,7 +14,7 @@ import { summaryGenerator } from "./summary-generator.js";
 import type { Conversation, LeadPayload, QualificationFields } from "../types/index.js";
 
 const GREETING =
-  "Привет! Я помогу подобрать необычный подарок — такой, от которого действительно захватывает дух.\n\nДля начала — по какому поводу выбираете подарок?";
+  "Привет! Я помогу подобрать необычный подарок — такой, от которого действительно захватывает дух.\n\nМожно писать текстом или отправить голосовое — я всё пойму.\n\nДля начала — по какому поводу выбираете подарок?";
 
 export class ChatEngine {
   async start(
