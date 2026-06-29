@@ -65,7 +65,9 @@ async function handleUserText(ctx: Context, text: string): Promise<void> {
   const giftPhoto = gift ? giftPhotoPath(gift.externalId) : null;
   const isNewGift = Boolean(gift && shownGiftByUser.get(uid) !== gift.externalId);
 
-  if (gift && giftPhoto && isNewGift) {
+  const showGiftPhoto = Boolean(gift && giftPhoto && isNewGift && result.stage >= 8);
+
+  if (showGiftPhoto && gift && giftPhoto) {
     await replyWithPhotoFile(ctx, giftPhoto, result.reply);
     shownGiftByUser.set(uid, gift.externalId);
   } else {

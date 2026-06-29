@@ -97,7 +97,10 @@ export class ChatEngine {
     });
 
     const gifts = knowledgeBase.listGifts();
-    const matched = recommendationEngine.match(gifts, mergedFields, engine.recommendedGiftIds);
+    const readyForRecommendation = engine.stage >= 8;
+    const matched = readyForRecommendation
+      ? recommendationEngine.match(gifts, mergedFields, engine.recommendedGiftIds)
+      : [];
     if (matched[0] && !mergedFields.recommendedGiftName) {
       mergedFields.recommendedGiftId = matched[0].id;
       mergedFields.recommendedGiftName = matched[0].name;
@@ -165,9 +168,10 @@ export class ChatEngine {
       conversationId: conv.id,
       isComplete,
       stage: isComplete ? 10 : engine.stage,
-      recommendedGift: recommended
-        ? { id: recommended.id, externalId: recommended.externalId, name: recommended.name }
-        : null,
+      recommendedGift:
+        readyForRecommendation && recommended
+          ? { id: recommended.id, externalId: recommended.externalId, name: recommended.name }
+          : null,
     };
   }
 
