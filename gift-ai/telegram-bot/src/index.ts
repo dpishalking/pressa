@@ -1,4 +1,5 @@
 import { Bot, type Context } from "grammy";
+import { giftLabel } from "./gift-emojis.js";
 import { giftPhotoPath } from "./gift-photos.js";
 import { smartFormatReply } from "./format.js";
 import { t } from "./i18n.js";
@@ -110,6 +111,11 @@ async function syncConsultScreen(ctx: Context): Promise<boolean> {
   return true;
 }
 
+function catalogPriceLabel(apiLabel: string, lang: BotLanguage): string {
+  if (apiLabel === "по запросу") return t(lang).priceOnRequest;
+  return apiLabel;
+}
+
 async function resetBackendMenu(ctx: Context): Promise<void> {
   await apiPost("/chat/menu", apiIdentity(ctx));
 }
@@ -161,7 +167,9 @@ async function showCatalogGift(ctx: Context, externalId: string): Promise<void> 
     return;
   }
 
-  const caption = `<b>${gift.name}</b>\n\n💰 ${gift.priceLabel}`;
+  const displayName = giftLabel(gift.externalId, gift.name, language);
+  const price = catalogPriceLabel(gift.priceLabel, language);
+  const caption = `<b>${displayName}</b>\n\n💰 ${price}`;
   const text = `${caption}\n\n${gift.description}`;
   const photo = giftPhotoPath(gift.externalId);
   const markup = { reply_markup: catalogGiftKeyboard(gift.externalId, language) };

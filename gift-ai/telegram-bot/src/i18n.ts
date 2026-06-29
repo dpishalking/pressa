@@ -14,6 +14,7 @@ type Strings = {
   useMenuHint: string;
   consultRestarted: string;
   completeHandoff: string;
+  priceOnRequest: string;
 };
 
 const RU: Strings = {
@@ -31,6 +32,7 @@ const RU: Strings = {
   consultRestarted: "Начали заново.",
   completeHandoff:
     "✅ Вся информация передана менеджеру. Он свяжется с вами и поможет оформить заказ — без повторных вопросов.",
+  priceOnRequest: "по запросу",
 };
 
 const EN: Strings = {
@@ -48,6 +50,7 @@ const EN: Strings = {
   consultRestarted: "Starting over.",
   completeHandoff:
     "✅ Your details were sent to our manager. They'll contact you to help with the order.",
+  priceOnRequest: "on request",
 };
 
 const LV: Strings = {
@@ -64,6 +67,7 @@ const LV: Strings = {
   useMenuHint: "Izmantojiet pogas vai /start izvēlnei.",
   consultRestarted: "Sākam no jauna.",
   completeHandoff: "✅ Informācija nodota menedžerim. Viņš ar jums sazināsies.",
+  priceOnRequest: "pēc pieprasījuma",
 };
 
 const ET: Strings = {
@@ -80,6 +84,7 @@ const ET: Strings = {
   useMenuHint: "Kasutage nuppe või saatke /start menüü jaoks.",
   consultRestarted: "Alustame uuesti.",
   completeHandoff: "✅ Info on edastatud haldurile. Ta võtab teiega ühendust.",
+  priceOnRequest: "hind päringu järgi",
 };
 
 const LT: Strings = {
@@ -96,6 +101,7 @@ const LT: Strings = {
   useMenuHint: "Naudokite mygtukus arba /start meniu.",
   consultRestarted: "Pradedame iš naujo.",
   completeHandoff: "✅ Informacija perduota vadybininkui. Jis su jumis susisieks.",
+  priceOnRequest: "pagal užklausą",
 };
 
 const TABLE: Record<BotLanguage, Strings> = { ru: RU, en: EN, lv: LV, et: ET, lt: LT };

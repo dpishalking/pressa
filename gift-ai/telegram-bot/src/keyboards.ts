@@ -1,4 +1,5 @@
 import { InlineKeyboard } from "grammy";
+import { giftLabel } from "./gift-emojis.js";
 import { BOT_LANGUAGES } from "./languages.js";
 import type { BotLanguage } from "./languages.js";
 import { t } from "./i18n.js";
@@ -28,7 +29,7 @@ export function catalogListKeyboard(
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
   for (const item of items) {
-    kb.text(item.name, `cat:view:${item.externalId}`).row();
+    kb.text(giftLabel(item.externalId, item.name, lang), `cat:view:${item.externalId}`).row();
   }
   kb.text(t(lang).menuBack, "menu:main");
   return kb;
