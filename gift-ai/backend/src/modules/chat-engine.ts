@@ -202,7 +202,7 @@ export class ChatEngine {
     });
 
     const gifts = knowledgeBase.listGifts();
-    const readyForRecommendation = engine.stage >= 8;
+    const readyForRecommendation = engine.stage >= 8 || Boolean(mergedFields.catalogGiftInterest && engine.stage >= 4);
     const matched = readyForRecommendation
       ? recommendationEngine.match(gifts, mergedFields, engine.recommendedGiftIds)
       : [];

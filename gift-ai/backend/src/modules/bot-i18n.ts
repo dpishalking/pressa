@@ -24,12 +24,12 @@ const RU: Strings = {
   menuLang: "🌐 Выбрать язык / Select language",
   menuBack: "⬅️ В меню",
   greeting:
-    "👋 Отлично! Помогу подобрать подарок под вашу ситуацию.\n\n🎤 Можно писать текстом или отправить голосовое.\n\n🎂 Для начала — по какому поводу выбираете подарок?",
+    "👋 Помогу быстро оформить заявку — задам несколько коротких вопросов и передам менеджеру.\n\n🎂 По какому поводу подарок?",
   langSaved: (title) => `Язык общения: ${title}\n\nМожете вернуться в меню и начать подбор.`,
   catalogTitle: "📋 Каталог подарков Retro Pressa\n\nВыберите, что посмотреть подробнее:",
   catalogPick: "🎁 Подобрать этот подарок",
   catalogBack: "⬅️ К каталогу",
-  catalogChooseConsult: "Вы выбрали подарок из каталога — сейчас задам пару вопросов, чтобы оформить идею.",
+  catalogChooseConsult: "Вы выбрали подарок из каталога — уточню пару деталей и передам менеджеру.",
   useMenuHint: "Выберите действие кнопками ниже или нажмите /start для меню.",
 };
 
@@ -41,12 +41,12 @@ const EN: Strings = {
   menuLang: "🌐 Select language",
   menuBack: "⬅️ Main menu",
   greeting:
-    "Great! I'll help you find the right gift for your situation.\n\nYou can type or send a voice message.\n\nFirst — what's the occasion?",
+    "I'll collect a few basics and pass you to our manager.\n\nWhat's the occasion?",
   langSaved: (title) => `Chat language: ${title}\n\nGo back to the menu when you're ready.`,
   catalogTitle: "📋 Retro Pressa gift catalog\n\nTap a product to see more:",
   catalogPick: "🎁 Choose this gift",
   catalogBack: "⬅️ Back to catalog",
-  catalogChooseConsult: "You picked a gift from the catalog — I'll ask a few questions to tailor it.",
+  catalogChooseConsult: "You picked a gift from the catalog — a few quick questions, then our manager takes over.",
   useMenuHint: "Use the buttons below or send /start for the menu.",
 };
 

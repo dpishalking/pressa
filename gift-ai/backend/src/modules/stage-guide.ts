@@ -5,21 +5,27 @@ const FILLED = (v: string) => Boolean(v?.trim());
 /** Какой этап сейчас не закрыт по собранным полям */
 export function resolveNextStage(fields: QualificationFields, conversationStage: number): ConsultationStage {
   const fromFields = stageFromFields(fields);
-  // Не откатываемся назад, если диалог уже продвинулся дальше (контекст в переписке есть).
   if (conversationStage > fromFields) return Math.min(10, conversationStage) as ConsultationStage;
   return fromFields;
 }
 
+function hasGiftDirection(fields: QualificationFields): boolean {
+  return (
+    FILLED(fields.recommendedGiftName) ||
+    FILLED(fields.recommendedGiftId) ||
+    FILLED(fields.catalogGiftInterest)
+  );
+}
+
+/** Короткая воронка: повод → получатель → сроки → бюджет → (рекомендация) → контакты */
 function stageFromFields(fields: QualificationFields): ConsultationStage {
   if (!FILLED(fields.occasion)) return 1;
   if (!FILLED(fields.recipient) && !FILLED(fields.relationship)) return 2;
   if (!FILLED(fields.urgency) && !FILLED(fields.eventDate)) return 3;
   if (!FILLED(fields.budget)) return 4;
-  if (!FILLED(fields.desiredEmotions)) return 5;
-  if (!FILLED(fields.interests) && !FILLED(fields.hobbies) && !FILLED(fields.story)) return 6;
-  if (!FILLED(fields.recommendedGiftName)) return 8;
+  if (!hasGiftDirection(fields)) return 8;
   if (!FILLED(fields.phone) && !FILLED(fields.clientName)) return 10;
-  return 8;
+  return 10;
 }
 
 export function stageLabel(stage: ConsultationStage): string {
@@ -28,11 +34,7 @@ export function stageLabel(stage: ConsultationStage): string {
     2: "кому подарок",
     3: "сроки и доставка",
     4: "бюджет",
-    5: "эмоции от подарка",
-    6: "интересы и история",
-    7: "тип личности (внутренний)",
-    8: "рекомендация подарка",
-    9: "сравнение вариантов",
+    8: "краткая рекомендация",
     10: "контакты для менеджера",
   };
   return labels[stage] ?? "";
@@ -42,30 +44,26 @@ export function stageLabel(stage: ConsultationStage): string {
 export function questionForStage(stage: ConsultationStage, fields: QualificationFields): string {
   switch (stage) {
     case 1:
-      return "🎂 По какому поводу выбираете подарок?";
+      return "🎂 По какому поводу подарок?";
     case 2:
-      return "👤 Расскажите, кому подарок — кем вам приходится и сколько лет?";
+      return "👤 Кому дарите и сколько лет?";
     case 3:
-      return "📅 Когда нужен подарок и в какой город доставлять?";
+      return "📅 К какой дате нужен подарок и в какой город доставлять?";
     case 4:
-      return "💰 Какой бюджет примерно закладываете?";
-    case 5:
-      return "❤️ Что получатель должен почувствовать, когда откроет подарок?";
-    case 6:
-      return "🎯 Чем увлекается, чем гордится, что для него важно в жизни?";
+      return "💰 Какой бюджет закладываете?";
     case 8:
-      return "🎁 Хотите, предложу вариант из каталога — или сначала расскажете ещё пару деталей?";
-    case 9:
-      return "⚖️ Какой из вариантов ближе — или рассказать разницу подробнее?";
+      return fields.catalogGiftInterest
+        ? "☎️ Оставьте имя и телефон — передам менеджеру, он уточнит детали и оформит заказ."
+        : "🎁 Кратко предложу вариант из каталога. Оставьте имя и телефон — менеджер свяжется и доработает идею.";
     case 10:
-      return "☎️ Оставьте имя и телефон — передам менеджеру, он поможет оформить.";
+      return "☎️ Оставьте имя и телефон — передам менеджеру, он свяжется с вами.";
     default:
-      return "💬 Расскажите ещё немного — я слушаю.";
+      return "☎️ Оставьте имя и телефон — передам менеджеру.";
   }
 }
 
 export function replyHasQuestion(text: string): boolean {
-  return /[?？]/.test(text) || /расскажите|скажите|какой|какая|какие|когда|где|сколько|чем|что именно|есть ли|хотите|готовы|можете|оставьте/i.test(text);
+  return /[?？]/.test(text) || /расскажите|скажите|какой|какая|какие|когда|где|сколько|есть ли|хотите|готовы|можете|оставьте/i.test(text);
 }
 
 const NUDGE_RE =
@@ -88,9 +86,6 @@ export function isCatalogQuestion(text: string): boolean {
   return CATALOG_PITCH_RE.test(text.trim());
 }
 
-/**
- * Каждый ответ (кроме финала) должен вести клиента дальше — с вопросом.
- */
 export function ensureForwardReply(
   reply: string,
   stage: ConsultationStage,
@@ -113,16 +108,17 @@ export function buildStageHint(fields: QualificationFields, conversationStage: n
   if (FILLED(fields.recipient) || FILLED(fields.relationship)) done.push("получатель ✓");
   if (FILLED(fields.urgency) || FILLED(fields.eventDate)) done.push("сроки ✓");
   if (FILLED(fields.budget)) done.push("бюджет ✓");
-  if (FILLED(fields.desiredEmotions)) done.push("эмоции ✓");
-  if (FILLED(fields.interests) || FILLED(fields.hobbies)) done.push("интересы ✓");
-  if (FILLED(fields.recommendedGiftName)) done.push("подарок ✓");
+  if (hasGiftDirection(fields)) done.push("направление подарка ✓");
 
   const budgetNote =
     next === 4
-      ? "\nБЮДЖЕТ: не предлагай готовые вилки и примеры сумм — только один короткий открытый вопрос."
+      ? "\nБЮДЖЕТ: не предлагай готовые вилки — один короткий вопрос."
       : "";
 
+  const depthNote =
+    "\nНЕ спрашивай про хобби, истории из жизни, мечты, увлечения и «что она любит» — это задаст менеджер. Если клиент сам написал — сохрани в comments, но не углубляйся.";
+
   return `Сейчас этап ${next} (${stageLabel(next)}). Уже собрано: ${done.length ? done.join(", ") : "пока мало"}.
-ОБЯЗАТЕЛЬНО задай следующий вопрос по этапу ${next}. Не заканчивай сообщение без вопроса.
-Подсказка вопроса: «${questionForStage(next, fields)}»${budgetNote}`;
+ОБЯЗАТЕЛЬНО задай следующий короткий вопрос по этапу ${next}. Не заканчивай сообщение без вопроса (кроме финала с контактами).
+Подсказка вопроса: «${questionForStage(next, fields)}»${budgetNote}${depthNote}`;
 }
