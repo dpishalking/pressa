@@ -3,7 +3,14 @@ import type { ConsultationStage, QualificationFields } from "../types/index.js";
 const FILLED = (v: string) => Boolean(v?.trim());
 
 /** Какой этап сейчас не закрыт по собранным полям */
-export function resolveNextStage(fields: QualificationFields, modelStage: number): ConsultationStage {
+export function resolveNextStage(fields: QualificationFields, conversationStage: number): ConsultationStage {
+  const fromFields = stageFromFields(fields);
+  // Не откатываемся назад, если диалог уже продвинулся дальше (контекст в переписке есть).
+  if (conversationStage > fromFields) return Math.min(10, conversationStage) as ConsultationStage;
+  return fromFields;
+}
+
+function stageFromFields(fields: QualificationFields): ConsultationStage {
   if (!FILLED(fields.occasion)) return 1;
   if (!FILLED(fields.recipient) && !FILLED(fields.relationship)) return 2;
   if (!FILLED(fields.urgency) && !FILLED(fields.eventDate)) return 3;
@@ -12,7 +19,7 @@ export function resolveNextStage(fields: QualificationFields, modelStage: number
   if (!FILLED(fields.interests) && !FILLED(fields.hobbies) && !FILLED(fields.story)) return 6;
   if (!FILLED(fields.recommendedGiftName)) return 8;
   if (!FILLED(fields.phone) && !FILLED(fields.clientName)) return 10;
-  return Math.min(10, Math.max(modelStage, 8)) as ConsultationStage;
+  return 8;
 }
 
 export function stageLabel(stage: ConsultationStage): string {
@@ -99,8 +106,8 @@ export function ensureForwardReply(
   return `${text}${bridge}${q}`;
 }
 
-export function buildStageHint(fields: QualificationFields, modelStage: number): string {
-  const next = resolveNextStage(fields, modelStage);
+export function buildStageHint(fields: QualificationFields, conversationStage: number): string {
+  const next = resolveNextStage(fields, conversationStage);
   const done: string[] = [];
   if (FILLED(fields.occasion)) done.push("повод ✓");
   if (FILLED(fields.recipient) || FILLED(fields.relationship)) done.push("получатель ✓");

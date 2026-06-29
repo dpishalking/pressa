@@ -7,6 +7,7 @@ import { emotionAnalyzer } from "./emotion-analyzer.js";
 import { isTruncatedReply, sanitizeAssistantMessage } from "./engine-response-parser.js";
 import { knowledgeBase } from "./knowledge-base.js";
 import { leadScoring, recommendationEngine, scoreToBand } from "./lead-scoring.js";
+import { recoverFieldsFromTranscript } from "./field-recovery.js";
 import { qualificationEngine } from "./qualification-engine.js";
 import { isRepeatRequest } from "./stage-guide.js";
 import { summaryGenerator } from "./summary-generator.js";
@@ -58,6 +59,18 @@ export class ChatEngine {
 
     const emotion = emotionAnalyzer.analyze(text);
     const history = conversationMemory.formatTranscript(conv.id);
+
+    const recovered = recoverFieldsFromTranscript(
+      conversationMemory.getMessages(conv.id),
+      conv.fields,
+      text,
+    );
+    if (Object.keys(recovered).length) {
+      conv =
+        conversationMemory.update(conv.id, {
+          fields: qualificationEngine.mergeFields(conv.fields, recovered),
+        }) ?? conv;
+    }
 
     const engine = await qualificationEngine.process({
       conversation: conv,
