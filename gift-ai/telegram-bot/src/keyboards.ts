@@ -29,7 +29,7 @@ export function catalogListKeyboard(
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
   for (const item of items) {
-    kb.text(giftLabel(item.externalId, item.name, lang), `cat:view:${item.externalId}`).row();
+    kb.text(giftLabel(item.externalId, item.name), `cat:view:${item.externalId}`).row();
   }
   kb.text(t(lang).menuBack, "menu:main");
   return kb;

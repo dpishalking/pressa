@@ -6,6 +6,7 @@ import { syncGiftsFromConfig } from "../integrations/sheets/workbook-sync.js";
 import { sheetSyncConfig, sheetSyncEnabled } from "../integrations/sheets/config.js";
 import { config } from "../config.js";
 import { listCanonicalProductsWithPhotos } from "../modules/gift-photos.js";
+import { normalizeLanguage } from "../modules/languages.js";
 import { transcribeAudioBase64 } from "../integrations/ai/transcribe.js";
 
 export const api = new Hono();
@@ -21,7 +22,10 @@ api.get("/health", (c) =>
   }),
 );
 
-api.get("/catalog", (c) => c.json({ items: chatEngine.listCatalog() }));
+api.get("/catalog", (c) => {
+  const lang = normalizeLanguage(c.req.query("lang"));
+  return c.json({ items: chatEngine.listCatalog(lang) });
+});
 
 api.get("/chat/status", (c) => {
   const channel = c.req.query("channel");

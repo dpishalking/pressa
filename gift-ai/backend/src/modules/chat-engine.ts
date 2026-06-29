@@ -13,12 +13,14 @@ import { recoverFieldsFromTranscript } from "./field-recovery.js";
 import { qualificationEngine } from "./qualification-engine.js";
 import { defaultNameForExternalId } from "./product-catalog.js";
 import { buildCatalogCardDescription } from "./catalog-copy.js";
+import { getLocalizedCatalogCard, localizedProductName, PRICE_ON_REQUEST } from "./product-i18n.js";
+import type { BotLanguage } from "./languages.js";
 import { isRepeatRequest } from "./stage-guide.js";
 import { summaryGenerator } from "./summary-generator.js";
 import type { Conversation, LeadPayload, QualificationFields } from "../types/index.js";
 
-function formatPriceLabel(min: number, max: number): string {
-  if (!min && !max) return "";
+function formatPriceLabel(min: number, max: number, lang: BotLanguage = "ru"): string {
+  if (!min && !max) return PRICE_ON_REQUEST[lang];
   if (min && max && min !== max) return `${min}–${max} ₽`;
   return `${max || min} ₽`;
 }
@@ -66,7 +68,7 @@ export class ChatEngine {
     return { reply, conversationId: conv.id, stage: 1 };
   }
 
-  listCatalog(): Array<{
+  listCatalog(lang: BotLanguage = "ru"): Array<{
     id: string;
     externalId: string;
     name: string;
@@ -74,19 +76,25 @@ export class ChatEngine {
     priceLabel: string;
     emotions: string[];
   }> {
-    return knowledgeBase.listGifts().map((g) => ({
-      id: g.id,
-      externalId: g.externalId,
-      name: defaultNameForExternalId(g.externalId) ?? g.name,
-      description: buildCatalogCardDescription({
-        description: g.description,
-        cases: g.cases,
-        reviews: g.reviews,
-        suitableFor: g.suitableFor,
-      }),
-      priceLabel: formatPriceLabel(g.priceMin, g.priceMax),
-      emotions: g.emotions,
-    }));
+    return knowledgeBase.listGifts().map((g) => {
+      const localized = getLocalizedCatalogCard(g.externalId, lang);
+      const fallbackName = defaultNameForExternalId(g.externalId) ?? g.name;
+      return {
+        id: g.id,
+        externalId: g.externalId,
+        name: localized?.name ?? localizedProductName(g.externalId, lang, fallbackName),
+        description:
+          localized?.description ??
+          buildCatalogCardDescription({
+            description: g.description,
+            cases: g.cases,
+            reviews: g.reviews,
+            suitableFor: g.suitableFor,
+          }),
+        priceLabel: formatPriceLabel(g.priceMin, g.priceMax, lang),
+        emotions: g.emotions,
+      };
+    });
   }
 
   getChatStatus(channel: string, channelUserId: string): {

@@ -135,7 +135,7 @@ async function showCatalog(ctx: Context): Promise<void> {
   const { language } = setSession(uid, { screen: "catalog" });
   const s = t(language);
 
-  const { items } = await apiGet<{ items: CatalogItem[] }>("/catalog");
+  const { items } = await apiGet<{ items: CatalogItem[] }>(`/catalog?lang=${language}`);
   if (!items.length) {
     await ctx.reply(smartFormatReply("Каталог пока пуст."), {
       parse_mode: "HTML",
@@ -155,15 +155,15 @@ async function showCatalogGift(ctx: Context, externalId: string): Promise<void> 
   const { language } = getSession(uid);
   const s = t(language);
 
-  const { items } = await apiGet<{ items: CatalogItem[] }>("/catalog");
+  const { items } = await apiGet<{ items: CatalogItem[] }>(`/catalog?lang=${language}`);
   const gift = items.find((g) => g.externalId === externalId);
   if (!gift) {
     await showCatalog(ctx);
     return;
   }
 
-  const displayName = giftLabel(gift.externalId, gift.name, language);
-  const caption = `<b>${displayName}</b>`;
+  const displayName = giftLabel(gift.externalId, gift.name);
+  const caption = `<b>${displayName}</b>\n\n💰 ${gift.priceLabel}`;
   const text = gift.description;
   const photo = giftPhotoPath(gift.externalId);
   const markup = { reply_markup: catalogGiftKeyboard(gift.externalId, language) };

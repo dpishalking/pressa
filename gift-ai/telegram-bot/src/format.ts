@@ -8,12 +8,12 @@ const HTML_TAG_RE = /<\/?(?:b|i|u|s|code|pre|a)\b/i;
 const EMOJI_RE = /^\s*[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/u;
 
 const SECTION_EMOJI: [RegExp, string][] = [
-  [/^что (это|вы получите):/i, "📖"],
-  [/^(идея|главная идея):/i, "💡"],
-  [/^(закрывает потребность|почему это цепляет|для кого и зачем):/i, "❤️"],
-  [/^кому подходит:/i, "👥"],
-  [/^(как бывает|кейсы?):/i, "✨"],
-  [/^(что говорят|отзывы?):/i, "💬"],
+  [/^(что (это|вы получите)|what you get|ko jūs saņemsiet|mida sa saad|ką gausite):/i, "📖"],
+  [/^(идея|главная идея|main idea|galvenā ideja|peamine idee|pagrindinė idėja):/i, "💡"],
+  [/^(закрывает потребность|почему это цепляет|why it hits|kāpēc tas aizrauj|miks see mõjub|kodėl tai veikia):/i, "❤️"],
+  [/^(кому подходит|who it's for|kam piemērots|kellele sobib|kam tinka):/i, "👥"],
+  [/^(как бывает|кейсы?|real stories|kā tas notiek|kuidas see käib|kaip būna):/i, "✨"],
+  [/^(что говорят|отзывы?|what people say|ko saka|mida öeldakse|ką sako):/i, "💬"],
 ];
 
 function sectionEmoji(paragraph: string): string | null {
