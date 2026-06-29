@@ -9,6 +9,7 @@ let db: Database.Database | null = null;
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS gifts (
   id TEXT PRIMARY KEY,
+  external_id TEXT,
   name TEXT NOT NULL,
   description TEXT NOT NULL,
   price_min INTEGER NOT NULL DEFAULT 0,
@@ -72,6 +73,12 @@ export function getDb(): Database.Database {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  try {
+    db.exec(`ALTER TABLE gifts ADD COLUMN external_id TEXT`);
+  } catch {
+    /* column exists */
+  }
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_gifts_external_id ON gifts(external_id) WHERE external_id IS NOT NULL`);
   logger.info("Database initialized", { path: dbPath });
   return db;
 }

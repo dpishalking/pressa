@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { chatEngine } from "../modules/chat-engine.js";
 import { conversationMemory } from "../modules/conversation-memory.js";
 import { knowledgeBase } from "../modules/knowledge-base.js";
+import { syncGiftsFromSheetUrl } from "../integrations/sheets/sync.js";
 import { config } from "../config.js";
 
 export const api = new Hono();
@@ -11,6 +12,8 @@ api.get("/health", (c) =>
     ok: true,
     crm: config.CRM_PROVIDER,
     gemini: Boolean(config.GEMINI_API_KEY),
+    gifts: knowledgeBase.listGifts().length,
+    sheetSync: Boolean(config.GOOGLE_SHEET_CSV_URL),
   }),
 );
 
@@ -97,6 +100,19 @@ admin.patch("/gifts/:id", async (c) => {
 admin.delete("/gifts/:id", (c) => {
   const ok = knowledgeBase.deleteGift(c.req.param("id"));
   return c.json({ ok });
+});
+
+admin.post("/sync-sheets", async (c) => {
+  try {
+    const body = (await c.req.json<{ url?: string }>().catch(() => ({}))) as { url?: string };
+    const url = body.url || config.GOOGLE_SHEET_CSV_URL;
+    if (!url) return c.json({ error: "Укажите url или GOOGLE_SHEET_CSV_URL" }, 400);
+    const result = await syncGiftsFromSheetUrl(url);
+    return c.json({ ok: true, ...result, giftsInCatalog: knowledgeBase.listGifts().length });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
 });
 
 admin.get("/stats", (c) => {

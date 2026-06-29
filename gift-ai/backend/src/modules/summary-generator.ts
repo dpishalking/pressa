@@ -22,7 +22,8 @@ ${JSON.stringify(
 ${payload.fullTranscript}`;
 
     try {
-      return await callGemini({ system: SUMMARY_PROMPT, user });
+      const { text } = await callGemini({ system: SUMMARY_PROMPT, user });
+      return text;
     } catch {
       return [
         `Клиент: ${payload.clientName || "не указан"}. Повод: ${payload.occasion || "—"}.`,

@@ -80,8 +80,26 @@ export const EMPTY_QUALIFICATION: QualificationFields = {
   comments: "",
 };
 
+export type SheetGiftRow = {
+  externalId: string;
+  name: string;
+  description: string;
+  priceMin: number;
+  priceMax: number;
+  emotions: string[];
+  suitableFor: string[];
+  occasions: string[];
+  leadTimeDays: number;
+  personalization: string;
+  photoUrl: string;
+  cases: string;
+  reviews: string;
+  active: boolean;
+};
+
 export type Gift = {
   id: string;
+  externalId: string;
   name: string;
   description: string;
   priceMin: number;

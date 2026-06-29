@@ -3,11 +3,16 @@ import { logger } from "../../logger.js";
 
 type GeminiPart = { text: string };
 
+export type GeminiResult = {
+  text: string;
+  finishReason?: string;
+};
+
 export async function callGemini(opts: {
   system: string;
   user: string;
   json?: boolean;
-}): Promise<string> {
+}): Promise<GeminiResult> {
   if (!config.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY не настроен");
   }
@@ -19,7 +24,7 @@ export async function callGemini(opts: {
     contents: [{ role: "user", parts: [{ text: opts.user }] }],
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 2048,
+      maxOutputTokens: 4096,
       ...(opts.json ? { responseMimeType: "application/json" } : {}),
     },
   };
@@ -37,9 +42,13 @@ export async function callGemini(opts: {
   }
 
   const json = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: GeminiPart[] } }>;
+    candidates?: Array<{
+      content?: { parts?: GeminiPart[] };
+      finishReason?: string;
+    }>;
   };
-  const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ?? "";
+  const candidate = json.candidates?.[0];
+  const text = candidate?.content?.parts?.map((p) => p.text).join("") ?? "";
   if (!text) throw new Error("Gemini вернул пустой ответ");
-  return text;
+  return { text, finishReason: candidate?.finishReason };
 }

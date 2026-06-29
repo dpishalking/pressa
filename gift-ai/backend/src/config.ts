@@ -9,6 +9,7 @@ const envSchema = z.object({
   DATABASE_PATH: z.string().default("./data/gift-ai.db"),
   BITRIX24_WEBHOOK_URL: z.string().optional().default(""),
   BITRIX24_TAG: z.string().default("Подбор подарка AI"),
+  GOOGLE_SHEET_CSV_URL: z.string().optional().default(""),
   CRM_PROVIDER: z.enum(["bitrix24", "none"]).default("none"),
 });
 

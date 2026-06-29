@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "../db/client.js";
-import type { Gift } from "../types/index.js";
+import type { Gift, SheetGiftRow } from "../types/index.js";
 
 function rowToGift(row: Record<string, unknown>): Gift {
   return {
     id: String(row.id),
+    externalId: String(row.external_id ?? ""),
     name: String(row.name),
     description: String(row.description),
     priceMin: Number(row.price_min),
@@ -37,19 +38,20 @@ export class KnowledgeBase {
     return row ? rowToGift(row as Record<string, unknown>) : null;
   }
 
-  createGift(input: Omit<Gift, "id" | "createdAt" | "updatedAt">): Gift {
+  createGift(input: Omit<Gift, "id" | "createdAt" | "updatedAt" | "externalId"> & { externalId?: string }): Gift {
     const now = new Date().toISOString();
     const id = randomUUID();
     getDb()
       .prepare(
         `INSERT INTO gifts (
-          id, name, description, price_min, price_max, emotions, suitable_for,
+          id, external_id, name, description, price_min, price_max, emotions, suitable_for,
           occasions, lead_time_days, personalization, photo_url, cases, reviews,
           active, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
+        input.externalId ?? "",
         input.name,
         input.description,
         input.priceMin,
@@ -69,6 +71,37 @@ export class KnowledgeBase {
     return this.getGift(id)!;
   }
 
+  getByExternalId(externalId: string): Gift | null {
+    if (!externalId) return null;
+    const row = getDb().prepare("SELECT * FROM gifts WHERE external_id = ?").get(externalId);
+    return row ? rowToGift(row as Record<string, unknown>) : null;
+  }
+
+  upsertFromSheet(row: SheetGiftRow): { gift: Gift; created: boolean } {
+    const existing = this.getByExternalId(row.externalId);
+    const payload = {
+      externalId: row.externalId,
+      name: row.name,
+      description: row.description,
+      priceMin: row.priceMin,
+      priceMax: row.priceMax,
+      emotions: row.emotions,
+      suitableFor: row.suitableFor,
+      occasions: row.occasions,
+      leadTimeDays: row.leadTimeDays,
+      personalization: row.personalization,
+      photoUrl: row.photoUrl,
+      cases: row.cases,
+      reviews: row.reviews,
+      active: row.active,
+    };
+
+    if (existing) {
+      return { gift: this.updateGift(existing.id, payload)!, created: false };
+    }
+    return { gift: this.createGift(payload), created: true };
+  }
+
   updateGift(id: string, input: Partial<Omit<Gift, "id" | "createdAt" | "updatedAt">>): Gift | null {
     const existing = this.getGift(id);
     if (!existing) return null;
@@ -76,12 +109,13 @@ export class KnowledgeBase {
     getDb()
       .prepare(
         `UPDATE gifts SET
-          name = ?, description = ?, price_min = ?, price_max = ?, emotions = ?,
+          external_id = ?, name = ?, description = ?, price_min = ?, price_max = ?, emotions = ?,
           suitable_for = ?, occasions = ?, lead_time_days = ?, personalization = ?,
           photo_url = ?, cases = ?, reviews = ?, active = ?, updated_at = ?
         WHERE id = ?`,
       )
       .run(
+        merged.externalId ?? "",
         merged.name,
         merged.description,
         merged.priceMin,
@@ -120,7 +154,7 @@ export class KnowledgeBase {
 Кому подходит: ${g.suitableFor.join(", ")}
 Поводы: ${g.occasions.join(", ")}
 Срок изготовления: ${g.leadTimeDays} дн.
-Персонализация: ${g.personalization}
+Персонализация: ${g.personalization}${g.photoUrl ? `\nФото: ${g.photoUrl}` : ""}
 Кейсы: ${g.cases}
 Отзывы: ${g.reviews}`,
       )
