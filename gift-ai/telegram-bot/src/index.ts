@@ -1,4 +1,4 @@
-import { Bot, type Context } from "grammy";
+import { Bot, GrammyError, type Context } from "grammy";
 import { configureBotProfile } from "./bot-profile.js";
 import { giftLabel } from "./gift-emojis.js";
 import { giftPhotoPath } from "./gift-photos.js";
@@ -139,12 +139,12 @@ async function showMainMenu(ctx: Context, language?: BotLanguage): Promise<void>
   setSession(uid, { language: lang, screen: "menu", catalogFromConsult: false });
   shownGiftByUser.delete(uid);
 
-  await resetBackendMenu(ctx);
-
   const s = t(lang);
   await replyWithMascot(ctx, `${s.menuWelcome}\n\n${s.menuPrompt}`, sceneForStage(1, { isStart: true }), {
     reply_markup: mainMenuKeyboard(lang),
   });
+
+  void resetBackendMenu(ctx).catch((e) => console.warn("[menu reset]", e));
 }
 
 async function showCatalog(ctx: Context, opts?: { fromConsult?: boolean }): Promise<void> {
@@ -532,7 +532,16 @@ bot.on("message:audio", async (ctx) => {
   }
 });
 
-bot.catch((err) => console.error("Bot error:", err));
+bot.catch((err) => {
+  const e = err.error;
+  if (e instanceof GrammyError && e.error_code === 409) {
+    console.error("⚠️ 409 Conflict: два процесса с одним BOT_TOKEN — остановите локальный npm run dev:bot");
+    return;
+  }
+  console.error("Bot error:", err);
+});
+
+await bot.api.deleteWebhook().catch(() => {});
 
 bot.start({
   onStart: async (botInfo) => {
