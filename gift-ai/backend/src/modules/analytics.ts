@@ -60,6 +60,11 @@ function periodClause(period: "all" | "today", column = "created_at"): string {
   return "";
 }
 
+function countQuery(sql: string): number {
+  const row = getDb().prepare(sql).get() as { n: number } | undefined;
+  return row?.n ?? 0;
+}
+
 export function recordAnalyticsEvent(opts: {
   channel: string;
   channelUserId: string;
@@ -86,6 +91,8 @@ export function getBotStats(period: "all" | "today" = "all"): BotStats {
   const db = getDb();
   const p = periodClause(period);
   const pConv = periodClause(period, "created_at");
+  const pConvC = periodClause(period, "c.created_at");
+  const pMsg = periodClause(period, "m.created_at");
 
   const countEvent = (type: AnalyticsEventType, distinctUser = false): number => {
     const col = distinctUser ? "COUNT(DISTINCT channel_user_id)" : "COUNT(*)";
@@ -95,59 +102,36 @@ export function getBotStats(period: "all" | "today" = "all"): BotStats {
     return row?.n ?? 0;
   };
 
-  const uniqueVisitors =
-    countEvent("bot_start", true) ||
-    Number(
-      (
-        db
-          .prepare(`SELECT COUNT(DISTINCT channel_user_id) AS n FROM conversations WHERE 1=1${pConv}`)
-          .get() as { n: number }
-      ).n,
-    );
-
-  const userMessagesFromDb = Number(
-    (
-      db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM messages m WHERE m.role = 'user'${periodClause(period, "m.created_at")}`,
-        )
-        .get() as { n: number }
-    ).n,
+  const distinctUsers = countQuery(
+    `SELECT COUNT(DISTINCT channel_user_id) AS n FROM conversations WHERE 1=1${pConv}`,
   );
 
-  const applicationsReady = Number(
-    (
-      db
-        .prepare(
-          `SELECT COUNT(*) AS n FROM conversations WHERE status IN ('handoff', 'completed')${pConv}`,
-        )
-        .get() as { n: number }
-    ).n,
+  const conversationSessions = countQuery(`SELECT COUNT(*) AS n FROM conversations WHERE 1=1${pConv}`);
+
+  const consultStartsFromDb = countQuery(
+    `SELECT COUNT(DISTINCT c.channel_user_id) AS n FROM conversations c
+     WHERE EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id AND m.role = 'assistant')${pConvC}`,
   );
 
-  const leadsStored = Number(
-    (db.prepare(`SELECT COUNT(*) AS n FROM leads WHERE 1=1${p}`).get() as { n: number }).n,
+  const uniqueVisitors = Math.max(distinctUsers, countEvent("bot_start", true));
+
+  const userMessagesFromDb = countQuery(
+    `SELECT COUNT(*) AS n FROM messages m WHERE m.role = 'user'${pMsg}`,
   );
 
-  const crmLeads = Number(
-    (
-      db
-        .prepare(`SELECT COUNT(*) AS n FROM leads WHERE crm_lead_id IS NOT NULL AND crm_lead_id != ''${p}`)
-        .get() as { n: number }
-    ).n,
+  const applicationsReady = countQuery(
+    `SELECT COUNT(*) AS n FROM conversations WHERE status IN ('handoff', 'completed')${pConv}`,
   );
 
-  const activeConsultations = Number(
-    (db.prepare(`SELECT COUNT(*) AS n FROM conversations WHERE status = 'active'`).get() as { n: number }).n,
+  const leadsStored = countQuery(`SELECT COUNT(*) AS n FROM leads WHERE 1=1${p}`);
+
+  const crmLeads = countQuery(
+    `SELECT COUNT(*) AS n FROM leads WHERE crm_lead_id IS NOT NULL AND crm_lead_id != ''${p}`,
   );
 
-  const abandoned = Number(
-    (
-      db
-        .prepare(`SELECT COUNT(*) AS n FROM conversations WHERE status = 'abandoned'${pConv}`)
-        .get() as { n: number }
-    ).n,
-  );
+  const activeConsultations = countQuery(`SELECT COUNT(*) AS n FROM conversations WHERE status = 'active'`);
+
+  const abandoned = countQuery(`SELECT COUNT(*) AS n FROM conversations WHERE status = 'abandoned'${pConv}`);
 
   const avgRow = db
     .prepare(
@@ -155,26 +139,14 @@ export function getBotStats(period: "all" | "today" = "all"): BotStats {
     )
     .get() as { avg: number | null };
 
-  const consultStarts = Math.max(countEvent("consult_begin"), countEvent("consult_begin", true));
+  const botStarts = Math.max(countEvent("bot_start"), conversationSessions);
+  const consultStarts = Math.max(countEvent("consult_begin"), consultStartsFromDb);
   const handoffShown = Math.max(countEvent("handoff_shown"), applicationsReady);
   const managerClicks = countEvent("manager_click");
 
-  const funnelVisitors = Math.max(
-    uniqueVisitors,
-    Number(
-      (
-        db.prepare(`SELECT COUNT(DISTINCT channel_user_id) AS n FROM conversations`).get() as { n: number }
-      ).n,
-    ),
-  );
-  const funnelConsult = Number(
-    (
-      db
-        .prepare(
-          `SELECT COUNT(DISTINCT channel_user_id) AS n FROM conversations WHERE stage >= 2${pConv}`,
-        )
-        .get() as { n: number }
-    ).n,
+  const funnelVisitors = Math.max(uniqueVisitors, distinctUsers);
+  const funnelConsult = countQuery(
+    `SELECT COUNT(DISTINCT channel_user_id) AS n FROM conversations WHERE stage >= 2${pConv}`,
   );
   const funnelHandoff = applicationsReady;
 
@@ -220,7 +192,7 @@ export function getBotStats(period: "all" | "today" = "all"): BotStats {
   return {
     period,
     uniqueVisitors,
-    botStarts: countEvent("bot_start"),
+    botStarts,
     consultStarts,
     catalogOpens: countEvent("catalog_open"),
     userMessages: Math.max(countEvent("user_message"), userMessagesFromDb),

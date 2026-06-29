@@ -10,19 +10,25 @@ import { normalizeLanguage } from "../modules/languages.js";
 import { transcribeAudioBase64 } from "../integrations/ai/transcribe.js";
 import { seedGifts } from "../seed.js";
 import { getBotStats, recordAnalyticsEvent, type AnalyticsEventType } from "../modules/analytics.js";
+import { getDb } from "../db/client.js";
 
 export const api = new Hono();
 
-api.get("/health", (c) =>
-  c.json({
+api.get("/health", (c) => {
+  const db = getDb();
+  const conversations = (db.prepare("SELECT COUNT(*) AS n FROM conversations").get() as { n: number }).n;
+  const messages = (db.prepare("SELECT COUNT(*) AS n FROM messages WHERE role = 'user'").get() as { n: number }).n;
+  return c.json({
     ok: true,
     crm: config.CRM_PROVIDER,
     gemini: Boolean(config.GEMINI_API_KEY),
     gifts: knowledgeBase.listGifts().length,
     catalogPhotos: listCanonicalProductsWithPhotos(),
     sheetSync: sheetSyncEnabled(),
-  }),
-);
+    conversations,
+    userMessages: messages,
+  });
+});
 
 api.get("/catalog", (c) => {
   const lang = normalizeLanguage(c.req.query("lang"));

@@ -125,8 +125,8 @@ export function formatStatsMessage(stats: BotStats): string {
   return [
     `📊 <b>Статистика бота</b> (${periodLabel})`,
     "",
-    `👥 Зашли в бота: <b>${stats.uniqueVisitors}</b>`,
-    `🚀 Нажали /start: <b>${stats.botStarts}</b>`,
+    `👥 Уникальных посетителей: <b>${stats.uniqueVisitors}</b>`,
+    `🚀 Сессий (/start и диалоги): <b>${stats.botStarts}</b>`,
     `🎁 Начали подбор: <b>${stats.consultStarts}</b>`,
     `📋 Открыли каталог: <b>${stats.catalogOpens}</b>`,
     `💬 Сообщений от клиентов: <b>${stats.userMessages}</b>`,
