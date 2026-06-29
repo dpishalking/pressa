@@ -4,12 +4,19 @@ import { smartFormatReply } from "./format.js";
 
 const API_URL = (process.env.API_URL ?? "http://localhost:3100").replace(/\/$/, "");
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? "";
-const ADMIN_TELEGRAM_IDS = new Set(
-  (process.env.ADMIN_TELEGRAM_IDS ?? "")
-    .split(/[,;\s]+/)
-    .map((s) => s.trim())
-    .filter(Boolean),
-);
+
+function parseAdminAllowlist(raw: string): { ids: Set<string>; usernames: Set<string> } {
+  const ids = new Set<string>();
+  const usernames = new Set<string>();
+  for (const entry of raw.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean)) {
+    const normalized = entry.replace(/^@/, "");
+    if (/^\d+$/.test(normalized)) ids.add(normalized);
+    else usernames.add(normalized.toLowerCase());
+  }
+  return { ids, usernames };
+}
+
+const ADMIN_ALLOWLIST = parseAdminAllowlist(process.env.ADMIN_TELEGRAM_IDS ?? "");
 
 export type BotStats = {
   period: "all" | "today";
@@ -49,13 +56,17 @@ export type BotStats = {
 };
 
 export function isBotAdmin(ctx: Context): boolean {
-  if (!ADMIN_TELEGRAM_IDS.size) return false;
+  const { ids, usernames } = ADMIN_ALLOWLIST;
+  if (!ids.size && !usernames.size) return false;
   const id = String(ctx.from?.id ?? "");
-  return ADMIN_TELEGRAM_IDS.has(id);
+  if (ids.has(id)) return true;
+  const username = ctx.from?.username?.toLowerCase() ?? "";
+  return Boolean(username && usernames.has(username));
 }
 
 export function adminConfigured(): boolean {
-  return Boolean(ADMIN_API_KEY && ADMIN_TELEGRAM_IDS.size);
+  const { ids, usernames } = ADMIN_ALLOWLIST;
+  return Boolean(ADMIN_API_KEY && (ids.size || usernames.size));
 }
 
 async function adminFetch<T>(path: string): Promise<T> {
