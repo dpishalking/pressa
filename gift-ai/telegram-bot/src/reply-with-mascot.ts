@@ -13,29 +13,40 @@ function formatHtml(text: string, opts?: FormatOpts): string {
   return `${html}\n\n${managerLinkHtml(opts.managerHandoff)}`;
 }
 
-async function sendHtml(
+function plainWithManagerLink(text: string, opts?: FormatOpts): string {
+  if (!opts?.managerHandoff) return text;
+  return `${text}\n\n${opts.managerHandoff.url}`;
+}
+
+async function sendTextMessage(
   ctx: Context,
   text: string,
   extra?: Parameters<Context["reply"]>[1],
   formatOpts?: FormatOpts,
-): Promise<number | undefined> {
+): Promise<void> {
+  const uid = userIdFromCtx(ctx);
   const html = formatHtml(text, formatOpts);
+
   try {
     const msg = await ctx.reply(html, { parse_mode: "HTML", ...extra });
-    trackBotMessages(userIdFromCtx(ctx), [msg.message_id]);
-    return msg.message_id;
+    trackBotMessages(uid, [msg.message_id]);
+    return;
   } catch (e) {
     console.error("[html reply failed]", e);
-    const msg = await ctx.reply(text, extra);
-    trackBotMessages(userIdFromCtx(ctx), [msg.message_id]);
-    return msg.message_id;
+  }
+
+  try {
+    const msg = await ctx.reply(plainWithManagerLink(text, formatOpts), extra);
+    trackBotMessages(uid, [msg.message_id]);
+  } catch (e) {
+    console.error("[plain reply failed]", e);
+    const msg = await ctx.reply(text.slice(0, 4000), extra);
+    trackBotMessages(uid, [msg.message_id]);
   }
 }
 
 type PhotoReplyOpts = {
-  /** Короткая подпись к фото, если полный текст не влезает в лимит Telegram (1024). */
   caption?: string;
-  /** Текст отдельным сообщением после фото (без дублирования подписи). */
   followUp?: string;
 };
 
@@ -47,47 +58,37 @@ export async function replyWithPhotoFile(
   opts?: PhotoReplyOpts & FormatOpts,
 ): Promise<void> {
   const html = formatHtml(text, opts);
-  const captionHtml = formatHtml(opts?.caption ?? text, opts);
   const photo = new InputFile(photoPath);
   const uid = userIdFromCtx(ctx);
 
   try {
     await ctx.api.sendChatAction(ctx.chat!.id, "upload_photo");
+
     if (html.length <= CAPTION_LIMIT) {
       try {
         const msg = await ctx.replyWithPhoto(photo, { caption: html, parse_mode: "HTML", ...extra });
         trackBotMessages(uid, [msg.message_id]);
         return;
       } catch (e) {
-        console.error("[gift html caption failed]", e);
-        const plain = opts?.managerHandoff ? `${text}\n\n${opts.managerHandoff.url}` : text;
-        const msg = await ctx.replyWithPhoto(photo, { caption: plain, ...extra });
-        trackBotMessages(uid, [msg.message_id]);
-        return;
+        console.error("[photo html caption failed]", e);
+        try {
+          const plain = plainWithManagerLink(text, opts);
+          const msg = await ctx.replyWithPhoto(photo, { caption: plain.slice(0, CAPTION_LIMIT), ...extra });
+          trackBotMessages(uid, [msg.message_id]);
+          return;
+        } catch (e2) {
+          console.error("[photo plain caption failed]", e2);
+        }
       }
     }
-    if (opts?.caption && captionHtml.length <= CAPTION_LIMIT) {
-      const followUp = (opts.followUp ?? text).trim();
-      const photoOpts = followUp
-        ? { caption: captionHtml, parse_mode: "HTML" as const }
-        : { caption: captionHtml, parse_mode: "HTML" as const, ...extra };
-      try {
-        const msg = await ctx.replyWithPhoto(photo, photoOpts);
-        trackBotMessages(uid, [msg.message_id]);
-      } catch (e) {
-        console.error("[gift short caption failed]", e);
-        const msg = await ctx.replyWithPhoto(photo, followUp ? { caption: opts.caption } : { caption: opts.caption, ...extra });
-        trackBotMessages(uid, [msg.message_id]);
-      }
-      if (followUp) await sendHtml(ctx, followUp, extra, opts);
-      return;
-    }
-    const msg = await ctx.replyWithPhoto(photo);
-    trackBotMessages(uid, [msg.message_id]);
-    await sendHtml(ctx, text, extra, opts);
+
+    // Подпись не влезает (часто из‑за длинной ссылки на менеджера) — фото отдельно, текст следом.
+    const photoMsg = await ctx.replyWithPhoto(photo);
+    trackBotMessages(uid, [photoMsg.message_id]);
+    await sendTextMessage(ctx, text, extra, opts);
   } catch (e) {
-    console.error("[gift photo failed]", e);
-    await sendHtml(ctx, text, extra, opts);
+    console.error("[photo send failed]", e);
+    await sendTextMessage(ctx, text, extra, opts);
   }
 }
 
@@ -100,7 +101,7 @@ export async function replyWithMascot(
 ): Promise<void> {
   const photoPath = mascotImagePath(scene, userIdFromCtx(ctx));
   if (!photoPath) {
-    await sendHtml(ctx, text, extra, formatOpts);
+    await sendTextMessage(ctx, text, extra, formatOpts);
     return;
   }
   await replyWithPhotoFile(ctx, photoPath, text, extra, formatOpts);
