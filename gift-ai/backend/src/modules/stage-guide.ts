@@ -24,7 +24,6 @@ function stageFromFields(fields: QualificationFields): ConsultationStage {
   if (!FILLED(fields.urgency) && !FILLED(fields.eventDate)) return 3;
   if (!FILLED(fields.budget)) return 4;
   if (!hasGiftDirection(fields)) return 8;
-  if (!FILLED(fields.phone) && !FILLED(fields.clientName)) return 10;
   return 10;
 }
 
@@ -53,12 +52,12 @@ export function questionForStage(stage: ConsultationStage, fields: Qualification
       return "💰 Какой бюджет закладываете?";
     case 8:
       return fields.catalogGiftInterest
-        ? "☎️ Оставьте имя и телефон — передам менеджеру, он уточнит детали и оформит заказ."
-        : "🎁 Кратко предложу вариант из каталога. Оставьте имя и телефон — менеджер свяжется и доработает идею.";
+        ? "☎️ Нажмите кнопку ниже — откроется чат с менеджером, текст заявки уже будет готов."
+        : "🎁 Кратко предложу вариант из каталога — затем передам менеджеру.";
     case 10:
-      return "☎️ Оставьте имя и телефон — передам менеджеру, он свяжется с вами.";
+      return "☎️ Нажмите кнопку ниже — откроется чат с менеджером, текст заявки уже будет готов.";
     default:
-      return "☎️ Оставьте имя и телефон — передам менеджеру.";
+      return "☎️ Нажмите кнопку ниже — откроется чат с менеджером.";
   }
 }
 

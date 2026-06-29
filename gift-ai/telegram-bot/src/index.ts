@@ -8,6 +8,7 @@ import {
   catalogListKeyboard,
   languageKeyboard,
   mainMenuKeyboard,
+  managerHandoffKeyboard,
 } from "./keyboards.js";
 import { languageTitle, normalizeLanguage, type BotLanguage } from "./languages.js";
 import { sceneForStage } from "./mascot.js";
@@ -46,6 +47,7 @@ type ChatResponse = {
   stage: number;
   isComplete?: boolean;
   recommendedGift?: RecommendedGift;
+  managerHandoff?: { url: string; buttonLabel: string; prompt: string; draftMessage: string };
   needsMenu?: boolean;
 };
 
@@ -248,19 +250,19 @@ async function handleUserTextInner(ctx: Context, text: string): Promise<void> {
   const giftPhoto = gift ? giftPhotoPath(gift.externalId) : null;
   const isNewGift = Boolean(gift && shownGiftByUser.get(uid) !== gift.externalId);
   const showGiftPhoto = Boolean(gift && giftPhoto && isNewGift && result.stage >= 8);
+  const handoffMarkup = result.managerHandoff
+    ? { reply_markup: managerHandoffKeyboard(result.managerHandoff.url, result.managerHandoff.buttonLabel, session.language) }
+    : undefined;
 
   if (showGiftPhoto && gift && giftPhoto) {
-    await replyWithPhotoFile(ctx, giftPhoto, result.reply, undefined, { stage: result.stage });
+    await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, { stage: result.stage });
     shownGiftByUser.set(uid, gift.externalId);
   } else {
     const scene = sceneForStage(result.stage, { isComplete: result.isComplete });
-    await replyWithMascot(ctx, result.reply, scene, undefined, { stage: result.stage });
+    await replyWithMascot(ctx, result.reply, scene, handoffMarkup, { stage: result.stage });
   }
 
   if (result.isComplete) {
-    await sendTrackedReply(ctx, t(session.language).completeHandoff, {
-      reply_markup: mainMenuKeyboard(session.language),
-    });
     shownGiftByUser.delete(uid);
     setSession(uid, { screen: "menu" });
     await resetBackendMenu(ctx);

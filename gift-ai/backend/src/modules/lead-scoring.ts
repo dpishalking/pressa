@@ -44,11 +44,12 @@ export class LeadScoring {
     score += filled * 3;
 
     if (opts.hasRecommendation) score += 10;
-    if (fields.phone) score += 8;
+    if (fields.telegram) score += 10;
+    else if (fields.phone) score += 8;
     if (opts.emotionTone === "positive") score += 5;
     if (opts.emotionTone === "negative") score -= 15;
     if (opts.emotionTone === "hesitant") score -= 5;
-    if (opts.stage >= 10 && fields.phone) score += 10;
+    if (opts.stage >= 10 && (fields.telegram || fields.phone)) score += 10;
 
     return Math.min(100, Math.max(0, Math.round(score)));
   }

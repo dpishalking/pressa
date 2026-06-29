@@ -4,6 +4,13 @@ import { BOT_LANGUAGES } from "./languages.js";
 import type { BotLanguage } from "./languages.js";
 import { t } from "./i18n.js";
 
+export function managerHandoffKeyboard(url: string, buttonLabel: string, lang: BotLanguage): InlineKeyboard {
+  return new InlineKeyboard()
+    .url(buttonLabel, url)
+    .row()
+    .text(t(lang).menuBack, "menu:main");
+}
+
 export function mainMenuKeyboard(lang: BotLanguage): InlineKeyboard {
   const s = t(lang);
   return new InlineKeyboard()

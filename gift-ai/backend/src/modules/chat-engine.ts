@@ -12,6 +12,13 @@ import { leadScoring, recommendationEngine, scoreToBand } from "./lead-scoring.j
 import { recoverFieldsFromTranscript } from "./field-recovery.js";
 import { qualificationEngine } from "./qualification-engine.js";
 import { defaultNameForExternalId } from "./product-catalog.js";
+import {
+  buildManagerHandoff,
+  hasHandoffBasics,
+  stripPhoneCollectionAsk,
+  type ManagerHandoff,
+} from "./manager-handoff.js";
+import { resolveNextStage } from "./stage-guide.js";
 import { buildCatalogCardDescription } from "./catalog-copy.js";
 import { getLocalizedCatalogCard, localizedProductName, PRICE_ON_REQUEST } from "./product-i18n.js";
 import type { BotLanguage } from "./languages.js";
@@ -134,6 +141,7 @@ export class ChatEngine {
     isComplete: boolean;
     stage: number;
     recommendedGift: { id: string; externalId: string; name: string } | null;
+    managerHandoff?: ManagerHandoff;
     needsMenu?: boolean;
   }> {
     const { channel, channelUserId, text, telegramUsername } = opts;
@@ -207,7 +215,7 @@ export class ChatEngine {
       ? recommendationEngine.match(gifts, mergedFields, engine.recommendedGiftIds)
       : [];
     if (matched[0] && !mergedFields.recommendedGiftName) {
-      mergedFields.recommendedGiftId = matched[0].id;
+      mergedFields.recommendedGiftId = matched[0].externalId || matched[0].id;
       mergedFields.recommendedGiftName = matched[0].name;
       if (!mergedFields.recommendationReason) {
         mergedFields.recommendationReason = matched[0].description.slice(0, 300);
@@ -218,13 +226,34 @@ export class ChatEngine {
           .map((g) => g.name)
           .join(", ");
       }
+    } else if (!mergedFields.recommendedGiftId && engine.recommendedGiftIds[0]) {
+      mergedFields.recommendedGiftId = engine.recommendedGiftIds[0];
+      const byId = gifts.find(
+        (g) => g.externalId === engine.recommendedGiftIds[0] || g.id === engine.recommendedGiftIds[0],
+      );
+      if (byId && !mergedFields.recommendedGiftName) {
+        mergedFields.recommendedGiftName = byId.name;
+      }
+    }
+
+    const lang = normalizeLanguage(mergedFields.uiLanguage);
+    let reply = engine.reply;
+    let stage = resolveNextStage(mergedFields, engine.stage);
+    let managerHandoff: ManagerHandoff | undefined;
+
+    if (stage === 10 && hasHandoffBasics(mergedFields)) {
+      managerHandoff = buildManagerHandoff(mergedFields, lang);
+      const cleaned = stripPhoneCollectionAsk(reply);
+      reply = cleaned ? `${cleaned}\n\n${managerHandoff.prompt}` : managerHandoff.prompt;
+      engine.isComplete = true;
+      stage = 10;
     }
 
     const leadScore = leadScoring.compute(mergedFields, {
       modelScore: engine.leadScore,
       hasRecommendation: Boolean(mergedFields.recommendedGiftName),
       emotionTone: emotion.tone,
-      stage: engine.stage,
+      stage,
     });
     const leadScoreBand = scoreToBand(leadScore);
 
@@ -253,14 +282,14 @@ export class ChatEngine {
       });
     } else {
       conversationMemory.update(conv.id, {
-        stage: engine.stage,
+        stage,
         fields: mergedFields,
         leadScore,
         leadScoreBand,
       });
     }
 
-    conversationMemory.addMessage(conv.id, "assistant", engine.reply);
+    conversationMemory.addMessage(conv.id, "assistant", reply);
 
     const recommended = mergedFields.recommendedGiftId
       ? gifts.find(
@@ -269,10 +298,11 @@ export class ChatEngine {
       : undefined;
 
     return {
-      reply: engine.reply,
+      reply,
       conversationId: conv.id,
       isComplete,
-      stage: isComplete ? 10 : engine.stage,
+      stage: isComplete ? 10 : stage,
+      managerHandoff,
       recommendedGift:
         readyForRecommendation && recommended
           ? { id: recommended.id, externalId: recommended.externalId, name: recommended.name }

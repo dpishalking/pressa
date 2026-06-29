@@ -34,7 +34,7 @@ function buildUserPrompt(opts: {
       : "";
 
   const catalogNote = conversation.fields.catalogGiftInterest
-    ? `Клиент уже выбрал из каталога: «${conversation.fields.catalogGiftInterest}». Не спрашивай лишнего — после бюджета сразу проси контакты для менеджера.`
+    ? `Клиент уже выбрал из каталога: «${conversation.fields.catalogGiftInterest}». После бюджета предложи кнопку для связи с менеджером в Telegram — не спрашивай телефон.`
     : "";
 
   return `КАТАЛОГ ПОДАРКОВ (используй ТОЛЬКО эти ID):
