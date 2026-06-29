@@ -46,10 +46,13 @@ export type BotStats = {
   }>;
 };
 
+const STATS_TZ = process.env.STATS_TIMEZONE ?? "Europe/Moscow";
+
+/** Полночь «сегодня» в часовом поясе статистики (по умолчанию Москва). */
 function todayStartIso(): string {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
+  const local = new Date(new Date().toLocaleString("en-US", { timeZone: STATS_TZ }));
+  local.setHours(0, 0, 0, 0);
+  return local.toISOString();
 }
 
 function periodClause(period: "all" | "today", column = "created_at"): string {

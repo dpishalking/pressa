@@ -25,6 +25,7 @@ import {
   isBotAdmin,
   recordBotEvent,
   sendAdminPanel,
+  adminConfigured,
 } from "./admin.js";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -668,6 +669,9 @@ bot.start({
     }
     if (!isTranscribeAvailable()) {
       console.warn("⚠️  Voice disabled — check BOT_TOKEN and API_URL");
+    }
+    if (adminConfigured() && !process.env.ADMIN_API_KEY) {
+      console.warn("⚠️  ADMIN_TELEGRAM_IDS задан, но ADMIN_API_KEY нет — /admin и аналитика с бота не работают");
     }
   },
 });

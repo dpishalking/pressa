@@ -42,6 +42,12 @@ export class ChatEngine {
         fields: { ...conv.fields, telegram: `@${telegramUsername.replace(/^@/, "")}` },
       });
     }
+    recordAnalyticsEvent({
+      channel,
+      channelUserId,
+      eventType: "bot_start",
+      conversationId: conv.id,
+    });
     return { conversationId: conv.id };
   }
 

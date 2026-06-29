@@ -1,5 +1,6 @@
 import type { Context } from "grammy";
 import { InlineKeyboard } from "grammy";
+import { escHtml } from "./format.js";
 
 const API_URL = (process.env.API_URL ?? "http://localhost:3100").replace(/\/$/, "");
 const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? "";
@@ -88,7 +89,10 @@ export async function recordBotEvent(opts: {
   conversationId?: string;
   metadata?: Record<string, unknown>;
 }): Promise<void> {
-  if (!ADMIN_API_KEY) return;
+  if (!ADMIN_API_KEY) {
+    console.warn("[analytics] ADMIN_API_KEY не задан на боте — часть событий не пишется");
+    return;
+  }
   try {
     await fetch(`${API_URL}/admin/events`, {
       method: "POST",
@@ -103,7 +107,7 @@ export async function recordBotEvent(opts: {
 
 function formatTopList(items: [string, number][]): string {
   if (!items.length) return "—";
-  return items.map(([name, n]) => `• ${name} — ${n}`).join("\n");
+  return items.map(([name, n]) => `• ${escHtml(name)} — ${n}`).join("\n");
 }
 
 function formatRecent(apps: BotStats["recentApplications"]): string {
@@ -111,7 +115,7 @@ function formatRecent(apps: BotStats["recentApplications"]): string {
   return apps
     .map((a, i) => {
       const date = a.createdAt.slice(0, 10);
-      return `${i + 1}. ${a.occasion} · ${a.gift}\n   💰 ${a.budget} · ${a.telegram}\n   ${date}`;
+      return `${i + 1}. ${escHtml(a.occasion)} · ${escHtml(a.gift)}\n   💰 ${escHtml(a.budget)} · ${escHtml(a.telegram)}\n   ${date}`;
     })
     .join("\n\n");
 }
