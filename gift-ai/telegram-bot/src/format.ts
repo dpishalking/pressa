@@ -8,14 +8,18 @@ const HTML_TAG_RE = /<\/?(?:b|i|u|s|code|pre|a)\b/i;
 const EMOJI_RE = /^\s*[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/u;
 
 const SECTION_EMOJI: [RegExp, string][] = [
-  [/^(что (это|вы получите)|what you get|ko jūs saņemsiet|mida sa saad|ką gausite):/i, "📖"],
-  [/^(идея|главная идея|main idea|galvenā ideja|peamine idee|pagrindinė idėja):/i, "💡"],
-  [/^(кому подходит|who it's for|kam piemērots|kellele sobib|kam tinka):/i, "👥"],
+  [/^(что (это|вы получите)|what you get|ko jūs saņemsiet|mida sa saad|ką gausite)\b[^:]*:/i, "📖"],
+  [/^(идея|главная идея|main idea|galvenā ideja|peamine idee|pagrindinė idėja)\b[^:]*:/i, "💡"],
+  [/^(кому подходит|who it's for|kam piemērots|kellele sobib|kam tinka)\b[^:]*:/i, "👥"],
   [
-    /^(как бывает|кейсы?|how it works in practice|kā tas notiek praksē|kuidas see praktikas on|kaip būna praktikoje):/i,
-    "✨",
+    /^(как бывает|кейсы?|how it works in practice|kā tas notiek praksē|kuidas see praktikas on|kaip būna praktikoje)\b[^:]*:/i,
+    "💬",
   ],
 ];
+
+function isCatalogSectionHead(head: string): boolean {
+  return SECTION_EMOJI.some(([re]) => re.test(head.trim()));
+}
 
 function sectionEmoji(paragraph: string): string | null {
   const head = paragraph.trim().split("\n")[0]?.trim() ?? "";
@@ -24,6 +28,7 @@ function sectionEmoji(paragraph: string): string | null {
   }
   return null;
 }
+
 const STAGE_EMOJI: Record<number, string> = {
   1: "🎂",
   2: "👤",
@@ -43,6 +48,35 @@ export type FormatOpts = {
 
 export function escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+const SECTION_LINE_RE =
+  /^(?:(?<emoji>[\p{Extended_Pictographic}\u{FE0F}\u{200D}]+\s+))?(?<label>[^:]+):\s*(?<body>.*)$/u;
+
+function formatBodyText(body: string): string {
+  const parts = body.split(/(?<=[.!?…])\s+/).filter(Boolean);
+  if (parts.length <= 1) return formatSentence(body);
+  return parts.map(formatSentence).join(" ");
+}
+
+/** Жирный заголовок блока каталога: «📖 Что вы получите:» */
+function formatSectionLine(line: string): string | null {
+  const m = line.trim().match(SECTION_LINE_RE);
+  if (!m?.groups?.label) return null;
+
+  const label = m.groups.label.trim();
+  const head = `${label}:`;
+  if (!isCatalogSectionHead(head) && !isCatalogSectionHead(line.trim())) return null;
+
+  const emoji = m.groups.emoji?.trim() ?? sectionEmoji(head) ?? "";
+  const prefix = emoji ? `${emoji} ` : "";
+  const boldHead = `<b>${escHtml(`${prefix}${label}`)}:</b>`;
+  const body = m.groups.body?.trim() ?? "";
+  return body ? `${boldHead} ${formatBodyText(body)}` : boldHead;
+}
+
+function formatLine(line: string): string {
+  return formatSectionLine(line) ?? formatBodyText(line);
 }
 
 function formatSentence(sentence: string): string {
@@ -143,13 +177,7 @@ export function smartFormatReply(text: string, opts?: FormatOpts): string {
   return withEmojis
     .map((paragraph) => {
       const lines = paragraph.split("\n");
-      return lines
-        .map((line) => {
-          const parts = line.split(/(?<=[.!?…])\s+/).filter(Boolean);
-          if (parts.length <= 1) return formatSentence(line);
-          return parts.map(formatSentence).join(" ");
-        })
-        .join("\n");
+      return lines.map((line) => formatLine(line)).join("\n");
     })
     .join("\n\n");
 }
