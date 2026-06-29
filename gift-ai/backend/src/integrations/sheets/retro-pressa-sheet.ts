@@ -93,8 +93,8 @@ function parseProductName(cell: string): string {
 function buildDescription(parts: {
   simple?: string;
   idea?: string;
-  howItWorks?: string;
   pain?: string;
+  forWho?: string;
 }): string {
   return buildEngagingCatalogDescription(parts);
 }
@@ -157,8 +157,8 @@ export function parseRetroPressaSheet(csvText: string): SheetGiftRow[] {
       description: buildDescription({
         simple,
         idea,
-        howItWorks,
-        pain,
+        pain: pain || forWho,
+        forWho,
       }),
       priceMin: 0,
       priceMax: 0,
