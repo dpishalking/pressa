@@ -7,6 +7,23 @@ const HTML_TAG_RE = /<\/?(?:b|i|u|s|code|pre|a)\b/i;
 
 const EMOJI_RE = /^\s*[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/u;
 
+const SECTION_EMOJI: [RegExp, string][] = [
+  [/^что это:/i, "📖"],
+  [/^идея:/i, "💡"],
+  [/^как работает:/i, "⚙️"],
+  [/^закрывает потребность:/i, "❤️"],
+  [/^кому подходит:/i, "👥"],
+  [/^кейсы?:/i, "✨"],
+  [/^отзывы?:/i, "💬"],
+];
+
+function sectionEmoji(paragraph: string): string | null {
+  const head = paragraph.trim().split("\n")[0]?.trim() ?? "";
+  for (const [re, emoji] of SECTION_EMOJI) {
+    if (re.test(head)) return emoji;
+  }
+  return null;
+}
 const STAGE_EMOJI: Record<number, string> = {
   1: "🎂",
   2: "👤",
@@ -91,6 +108,9 @@ function structureReply(text: string): string {
 
 function emojiForParagraph(paragraph: string, index: number, total: number, stage?: number): string {
   if (EMOJI_RE.test(paragraph)) return paragraph;
+
+  const section = sectionEmoji(paragraph);
+  if (section) return `${section} ${paragraph}`;
 
   let emoji: string;
   if (index === 0 && ACK_RE.test(paragraph)) {

@@ -170,7 +170,7 @@ async function showCatalogGift(ctx: Context, externalId: string): Promise<void> 
     shownGiftByUser.set(uid, gift.externalId);
     await replyWithPhotoFile(ctx, photo, text, markup, {
       caption,
-      followUp: `${gift.description}\n\n💰 ${gift.priceLabel}`,
+      followUp: gift.description,
     });
   } else {
     await ctx.reply(smartFormatReply(text), { parse_mode: "HTML", ...markup });
