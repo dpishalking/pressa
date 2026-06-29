@@ -2,6 +2,25 @@ const SKIP_SECTIONS = new Set([
   "как работает",
   "как заказать",
   "как это устроено",
+  // why
+  "закрывает потребность",
+  "почему это цепляет",
+  "why it hits",
+  "why this works",
+  "kāpēc tas aizrauj",
+  "miks see mõjub",
+  "kodėl tai veikia",
+  // reviews
+  "отзывы",
+  "что говорят",
+  "что говорят после подарка",
+  "reviews",
+  "what people say",
+  "what they say",
+  "what they say after the gift",
+  "ko saka pēc dāvanas",
+  "mida öeldakse",
+  "ką sako",
 ]);
 
 const SECTION_LABELS: Record<string, string> = {
@@ -109,11 +128,9 @@ export function buildEngagingCatalogDescription(parts: {
   pain?: string;
   forWho?: string;
 }): string {
-  const hook = parts.pain || parts.forWho;
   const blocks = [
     parts.simple && formatSection("что это", parts.simple),
     parts.idea && formatSection("идея", parts.idea),
-    hook && formatSection("закрывает потребность", hook),
     parts.forWho && formatSection("для кого", parts.forWho),
   ].filter(Boolean);
 
@@ -137,10 +154,7 @@ export function buildCatalogCardDescription(gift: {
     if (section) blocks.push(section);
   }
 
-  if (gift.reviews?.trim()) {
-    const section = formatSection("отзывы", gift.reviews);
-    if (section) blocks.push(section);
-  } else if (gift.suitableFor?.length) {
+  if (gift.suitableFor?.length) {
     const section = formatSection("кому подходит", gift.suitableFor.slice(0, 6).join(", "));
     if (section && !base.toLowerCase().includes("кому подходит")) blocks.push(section);
   }

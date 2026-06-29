@@ -2,6 +2,7 @@ import type { Context } from "grammy";
 import { InputFile } from "grammy";
 import { smartFormatReply, type FormatOpts } from "./format.js";
 import { mascotImagePath, type MascotScene } from "./mascot.js";
+import { trackBotMessages, userIdFromCtx } from "./message-cleanup.js";
 
 const CAPTION_LIMIT = 1024;
 
@@ -10,13 +11,17 @@ async function sendHtml(
   text: string,
   extra?: Parameters<Context["reply"]>[1],
   formatOpts?: FormatOpts,
-) {
+): Promise<number | undefined> {
   const html = smartFormatReply(text, formatOpts);
   try {
-    await ctx.reply(html, { parse_mode: "HTML", ...extra });
+    const msg = await ctx.reply(html, { parse_mode: "HTML", ...extra });
+    trackBotMessages(userIdFromCtx(ctx), [msg.message_id]);
+    return msg.message_id;
   } catch (e) {
     console.error("[html reply failed]", e);
-    await ctx.reply(text, extra);
+    const msg = await ctx.reply(text, extra);
+    trackBotMessages(userIdFromCtx(ctx), [msg.message_id]);
+    return msg.message_id;
   }
 }
 
@@ -37,16 +42,19 @@ export async function replyWithPhotoFile(
   const html = smartFormatReply(text, opts);
   const captionHtml = smartFormatReply(opts?.caption ?? text, opts);
   const photo = new InputFile(photoPath);
+  const uid = userIdFromCtx(ctx);
 
   try {
     await ctx.api.sendChatAction(ctx.chat!.id, "upload_photo");
     if (html.length <= CAPTION_LIMIT) {
       try {
-        await ctx.replyWithPhoto(photo, { caption: html, parse_mode: "HTML", ...extra });
+        const msg = await ctx.replyWithPhoto(photo, { caption: html, parse_mode: "HTML", ...extra });
+        trackBotMessages(uid, [msg.message_id]);
         return;
       } catch (e) {
         console.error("[gift html caption failed]", e);
-        await ctx.replyWithPhoto(photo, { caption: text, ...extra });
+        const msg = await ctx.replyWithPhoto(photo, { caption: text, ...extra });
+        trackBotMessages(uid, [msg.message_id]);
         return;
       }
     }
@@ -56,15 +64,18 @@ export async function replyWithPhotoFile(
         ? { caption: captionHtml, parse_mode: "HTML" as const }
         : { caption: captionHtml, parse_mode: "HTML" as const, ...extra };
       try {
-        await ctx.replyWithPhoto(photo, photoOpts);
+        const msg = await ctx.replyWithPhoto(photo, photoOpts);
+        trackBotMessages(uid, [msg.message_id]);
       } catch (e) {
         console.error("[gift short caption failed]", e);
-        await ctx.replyWithPhoto(photo, followUp ? { caption: opts.caption } : { caption: opts.caption, ...extra });
+        const msg = await ctx.replyWithPhoto(photo, followUp ? { caption: opts.caption } : { caption: opts.caption, ...extra });
+        trackBotMessages(uid, [msg.message_id]);
       }
       if (followUp) await sendHtml(ctx, followUp, extra, opts);
       return;
     }
-    await ctx.replyWithPhoto(photo);
+    const msg = await ctx.replyWithPhoto(photo);
+    trackBotMessages(uid, [msg.message_id]);
     await sendHtml(ctx, text, extra, opts);
   } catch (e) {
     console.error("[gift photo failed]", e);

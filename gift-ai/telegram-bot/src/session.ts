@@ -5,6 +5,8 @@ export type BotScreen = "menu" | "catalog" | "consult";
 export type UserSession = {
   language: BotLanguage;
   screen: BotScreen;
+  /** ID сообщений бота в текущем экране — удаляем при навигации или новом ответе. */
+  botMessageIds?: number[];
 };
 
 const sessions = new Map<string, UserSession>();

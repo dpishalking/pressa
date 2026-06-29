@@ -12,6 +12,7 @@ import {
 import { languageTitle, normalizeLanguage, type BotLanguage } from "./languages.js";
 import { sceneForStage } from "./mascot.js";
 import { replyWithMascot, replyWithPhotoFile } from "./reply-with-mascot.js";
+import { clearBotScreen, rewindBotMessages, trackBotMessage, userIdFromCtx } from "./message-cleanup.js";
 import { getSession, setSession } from "./session.js";
 import { isTranscribeAvailable, mimeForTelegramAudio, transcribeTelegramFile } from "./transcribe.js";
 
@@ -111,11 +112,22 @@ async function syncConsultScreen(ctx: Context): Promise<boolean> {
   return true;
 }
 
+async function sendTrackedReply(
+  ctx: Context,
+  text: string,
+  extra?: Parameters<Context["reply"]>[1],
+): Promise<void> {
+  const msg = await ctx.reply(smartFormatReply(text), { parse_mode: "HTML", ...extra });
+  trackBotMessage(userIdFromCtx(ctx), msg.message_id);
+}
+
 async function resetBackendMenu(ctx: Context): Promise<void> {
   await apiPost("/chat/menu", apiIdentity(ctx));
 }
 
 async function showMainMenu(ctx: Context, language?: BotLanguage): Promise<void> {
+  await clearBotScreen(ctx);
+
   const uid = channelUserId(ctx);
   const session = getSession(uid);
   const lang = language ?? session.language;
@@ -131,26 +143,28 @@ async function showMainMenu(ctx: Context, language?: BotLanguage): Promise<void>
 }
 
 async function showCatalog(ctx: Context): Promise<void> {
+  await clearBotScreen(ctx);
+
   const uid = channelUserId(ctx);
   const { language } = setSession(uid, { screen: "catalog" });
   const s = t(language);
 
   const { items } = await apiGet<{ items: CatalogItem[] }>(`/catalog?lang=${language}`);
   if (!items.length) {
-    await ctx.reply(smartFormatReply("Каталог пока пуст."), {
-      parse_mode: "HTML",
+    await sendTrackedReply(ctx, "Каталог пока пуст.", {
       reply_markup: mainMenuKeyboard(language),
     });
     return;
   }
 
-  await ctx.reply(smartFormatReply(s.catalogTitle), {
-    parse_mode: "HTML",
+  await sendTrackedReply(ctx, s.catalogTitle, {
     reply_markup: catalogListKeyboard(items, language),
   });
 }
 
 async function showCatalogGift(ctx: Context, externalId: string): Promise<void> {
+  await clearBotScreen(ctx);
+
   const uid = channelUserId(ctx);
   const { language } = getSession(uid);
   const s = t(language);
@@ -175,11 +189,13 @@ async function showCatalogGift(ctx: Context, externalId: string): Promise<void> 
       followUp: gift.description,
     });
   } else {
-    await ctx.reply(smartFormatReply(text), { parse_mode: "HTML", ...markup });
+    await sendTrackedReply(ctx, text, markup);
   }
 }
 
 async function beginConsultation(ctx: Context, catalogGiftExternalId?: string): Promise<void> {
+  await clearBotScreen(ctx);
+
   const uid = channelUserId(ctx);
   const { language } = getSession(uid);
   setSession(uid, { screen: "consult" });
@@ -203,8 +219,8 @@ async function handleUserText(ctx: Context, text: string): Promise<void> {
   const session = getSession(uid);
 
   if (!(await syncConsultScreen(ctx))) {
-    await ctx.reply(smartFormatReply(t(session.language).useMenuHint), {
-      parse_mode: "HTML",
+    await rewindBotMessages(ctx);
+    await sendTrackedReply(ctx, t(session.language).useMenuHint, {
       reply_markup: mainMenuKeyboard(session.language),
     });
     return;
@@ -221,6 +237,8 @@ async function handleUserText(ctx: Context, text: string): Promise<void> {
     return;
   }
 
+  await rewindBotMessages(ctx);
+
   const gift = result.recommendedGift ?? null;
   const giftPhoto = gift ? giftPhotoPath(gift.externalId) : null;
   const isNewGift = Boolean(gift && shownGiftByUser.get(uid) !== gift.externalId);
@@ -235,8 +253,13 @@ async function handleUserText(ctx: Context, text: string): Promise<void> {
   }
 
   if (result.isComplete) {
-    await ctx.reply(smartFormatReply(t(session.language).completeHandoff), { parse_mode: "HTML" });
-    await showMainMenu(ctx);
+    await sendTrackedReply(ctx, t(session.language).completeHandoff, {
+      reply_markup: mainMenuKeyboard(session.language),
+    });
+    shownGiftByUser.delete(uid);
+    setSession(uid, { screen: "menu" });
+    await resetBackendMenu(ctx);
+    return;
   }
 }
 
@@ -257,8 +280,8 @@ async function replyChatError(ctx: Context, e: unknown): Promise<void> {
 async function handleVoiceMessage(ctx: Context): Promise<void> {
   const session = getSession(channelUserId(ctx));
   if (!(await syncConsultScreen(ctx))) {
-    await ctx.reply(smartFormatReply(t(session.language).useMenuHint), {
-      parse_mode: "HTML",
+    await rewindBotMessages(ctx);
+    await sendTrackedReply(ctx, t(session.language).useMenuHint, {
       reply_markup: mainMenuKeyboard(session.language),
     });
     return;
@@ -289,7 +312,7 @@ async function handleVoiceMessage(ctx: Context): Promise<void> {
     }
 
     const preview = text.length > 120 ? `${text.slice(0, 117).trim()}…` : text;
-    await ctx.reply(smartFormatReply(`🎤 Услышал: «${preview}»`), { parse_mode: "HTML" });
+    await sendTrackedReply(ctx, `🎤 Услышал: «${preview}»`);
 
     await handleUserText(ctx, text);
   } catch (e) {
@@ -353,8 +376,8 @@ bot.on("callback_query:data", async (ctx) => {
     }
 
     if (data === "menu:lang") {
-      await ctx.reply(smartFormatReply(t(session.language).menuLang), {
-        parse_mode: "HTML",
+      await clearBotScreen(ctx);
+      await sendTrackedReply(ctx, t(session.language).menuLang, {
         reply_markup: languageKeyboard(session.language),
       });
       return;
@@ -363,8 +386,8 @@ bot.on("callback_query:data", async (ctx) => {
     if (data.startsWith("lang:")) {
       const lang = normalizeLanguage(data.slice(5));
       setSession(uid, { language: lang });
-      await ctx.reply(smartFormatReply(t(lang).langSaved(languageTitle(lang))), {
-        parse_mode: "HTML",
+      await clearBotScreen(ctx);
+      await sendTrackedReply(ctx, t(lang).langSaved(languageTitle(lang)), {
         reply_markup: mainMenuKeyboard(lang),
       });
       return;

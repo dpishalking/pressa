@@ -10,10 +10,11 @@ const EMOJI_RE = /^\s*[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/u;
 const SECTION_EMOJI: [RegExp, string][] = [
   [/^(что (это|вы получите)|what you get|ko jūs saņemsiet|mida sa saad|ką gausite):/i, "📖"],
   [/^(идея|главная идея|main idea|galvenā ideja|peamine idee|pagrindinė idėja):/i, "💡"],
-  [/^(закрывает потребность|почему это цепляет|why it hits|kāpēc tas aizrauj|miks see mõjub|kodėl tai veikia):/i, "❤️"],
   [/^(кому подходит|who it's for|kam piemērots|kellele sobib|kam tinka):/i, "👥"],
-  [/^(как бывает|кейсы?|real stories|kā tas notiek|kuidas see käib|kaip būna):/i, "✨"],
-  [/^(что говорят|отзывы?|what people say|ko saka|mida öeldakse|ką sako):/i, "💬"],
+  [
+    /^(как бывает|кейсы?|how it works in practice|kā tas notiek praksē|kuidas see praktikas on|kaip būna praktikoje):/i,
+    "✨",
+  ],
 ];
 
 function sectionEmoji(paragraph: string): string | null {

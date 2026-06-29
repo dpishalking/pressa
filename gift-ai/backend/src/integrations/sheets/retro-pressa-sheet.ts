@@ -157,7 +157,6 @@ export function parseRetroPressaSheet(csvText: string): SheetGiftRow[] {
       description: buildDescription({
         simple,
         idea,
-        pain: pain || forWho,
         forWho,
       }),
       priceMin: 0,
@@ -169,7 +168,7 @@ export function parseRetroPressaSheet(csvText: string): SheetGiftRow[] {
       personalization: howItWorks.slice(0, 500),
       photoUrl: "",
       cases: benefits.slice(0, 1000),
-      reviews: whyNow.slice(0, 500),
+      reviews: "",
       active: true,
     });
   }
