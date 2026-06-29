@@ -21,7 +21,7 @@ const RU: Strings = {
   menuPrompt: "Что хотите сделать?",
   menuConsult: "🎁 Подобрать подарок под ситуацию",
   menuCatalog: "📋 Выбрать из каталога",
-  menuLang: "🌐 Язык общения",
+  menuLang: "🌐 Выбрать язык / Select language",
   menuBack: "⬅️ В меню",
   greeting:
     "👋 Отлично! Помогу подобрать подарок под вашу ситуацию.\n\n🎤 Можно писать текстом или отправить голосовое.\n\n🎂 Для начала — по какому поводу выбираете подарок?",
@@ -38,7 +38,7 @@ const EN: Strings = {
   menuPrompt: "What would you like to do?",
   menuConsult: "🎁 Find a gift for my situation",
   menuCatalog: "📋 Browse catalog",
-  menuLang: "🌐 Chat language",
+  menuLang: "🌐 Select language",
   menuBack: "⬅️ Main menu",
   greeting:
     "Great! I'll help you find the right gift for your situation.\n\nYou can type or send a voice message.\n\nFirst — what's the occasion?",
@@ -55,7 +55,7 @@ const LV: Strings = {
   menuPrompt: "Ko vēlaties darīt?",
   menuConsult: "🎁 Piemeklēt dāvanu situācijai",
   menuCatalog: "📋 Izvēlēties no kataloga",
-  menuLang: "🌐 Sarunas valoda",
+  menuLang: "🌐 Izvēlēties valodu / Select language",
   menuBack: "⬅️ Izvēlne",
   greeting:
     "Lieliski! Palīdzēšu piemeklēt dāvanu jūsu situācijai.\n\nVarat rakstīt vai nosūtīt balss ziņu.\n\nVispirms — kāds ir pasākuma iemesls?",
@@ -72,7 +72,7 @@ const ET: Strings = {
   menuPrompt: "Mida soovite teha?",
   menuConsult: "🎁 Leia kingitus minu olukorda",
   menuCatalog: "📋 Vali kataloogist",
-  menuLang: "🌐 Suhtluskeel",
+  menuLang: "🌐 Vali keel / Select language",
   menuBack: "⬅️ Menüüsse",
   greeting:
     "Suurepärane! Aitan valida kingi teie olukorda.\n\nVõite kirjutada või saata häälsõnumi.\n\nKõigepealt — mis puhul kink valitakse?",
@@ -89,7 +89,7 @@ const LT: Strings = {
   menuPrompt: "Ką norite daryti?",
   menuConsult: "🎁 Parinkti dovaną situacijai",
   menuCatalog: "📋 Rinktis iš katalogo",
-  menuLang: "🌐 Bendravimo kalba",
+  menuLang: "🌐 Pasirinkti kalbą / Select language",
   menuBack: "⬅️ Į meniu",
   greeting:
     "Puiku! Padėsiu parinkti dovaną jūsų situacijai.\n\nGalite rašyti arba siųsti balso žinutę.\n\nPirmiausia — kokia proga?",
