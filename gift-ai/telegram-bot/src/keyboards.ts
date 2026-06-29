@@ -27,12 +27,8 @@ export function catalogListKeyboard(
   lang: BotLanguage,
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
-  for (let i = 0; i < items.length; i += 2) {
-    const a = items[i]!;
-    kb.text(a.name.slice(0, 40), `cat:view:${a.externalId}`);
-    const b = items[i + 1];
-    if (b) kb.text(b.name.slice(0, 40), `cat:view:${b.externalId}`);
-    kb.row();
+  for (const item of items) {
+    kb.text(item.name, `cat:view:${item.externalId}`).row();
   }
   kb.text(t(lang).menuBack, "menu:main");
   return kb;

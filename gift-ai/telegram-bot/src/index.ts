@@ -86,6 +86,30 @@ function apiIdentity(ctx: Context) {
   };
 }
 
+type ChatStatus = {
+  inConsultation: boolean;
+  stage: number;
+  language: string;
+};
+
+/** Восстанавливает режим консультации после перезапуска бота (сессия в памяти сбрасывается). */
+async function syncConsultScreen(ctx: Context): Promise<boolean> {
+  const uid = channelUserId(ctx);
+  const session = getSession(uid);
+  if (session.screen === "consult") return true;
+
+  const status = await apiGet<ChatStatus>(
+    `/chat/status?channel=telegram&channelUserId=${encodeURIComponent(uid)}`,
+  );
+  if (!status.inConsultation) return false;
+
+  setSession(uid, {
+    screen: "consult",
+    language: normalizeLanguage(status.language),
+  });
+  return true;
+}
+
 async function resetBackendMenu(ctx: Context): Promise<void> {
   await apiPost("/chat/menu", apiIdentity(ctx));
 }
@@ -137,12 +161,17 @@ async function showCatalogGift(ctx: Context, externalId: string): Promise<void> 
     return;
   }
 
-  const text = `<b>${gift.name}</b>\n\n${gift.description}\n\n💰 ${gift.priceLabel}`;
+  const caption = `<b>${gift.name}</b>\n\n💰 ${gift.priceLabel}`;
+  const text = `${caption}\n\n${gift.description}`;
   const photo = giftPhotoPath(gift.externalId);
   const markup = { reply_markup: catalogGiftKeyboard(gift.externalId, language) };
 
   if (photo) {
-    await replyWithPhotoFile(ctx, photo, text, markup);
+    shownGiftByUser.set(uid, gift.externalId);
+    await replyWithPhotoFile(ctx, photo, text, markup, {
+      caption,
+      followUp: `${gift.description}\n\n💰 ${gift.priceLabel}`,
+    });
   } else {
     await ctx.reply(smartFormatReply(text), { parse_mode: "HTML", ...markup });
   }
@@ -152,7 +181,11 @@ async function beginConsultation(ctx: Context, catalogGiftExternalId?: string): 
   const uid = channelUserId(ctx);
   const { language } = getSession(uid);
   setSession(uid, { screen: "consult" });
-  shownGiftByUser.delete(uid);
+  if (catalogGiftExternalId) {
+    shownGiftByUser.set(uid, catalogGiftExternalId);
+  } else {
+    shownGiftByUser.delete(uid);
+  }
 
   const result = await apiPost<ChatResponse>("/chat/begin", {
     ...apiIdentity(ctx),
@@ -160,14 +193,14 @@ async function beginConsultation(ctx: Context, catalogGiftExternalId?: string): 
     catalogGiftExternalId,
   });
 
-  await replyWithMascot(ctx, result.reply, sceneForStage(1, { isStart: true }));
+  await replyWithMascot(ctx, result.reply, sceneForStage(1, { isStart: true }), undefined, { stage: 1 });
 }
 
 async function handleUserText(ctx: Context, text: string): Promise<void> {
   const uid = channelUserId(ctx);
   const session = getSession(uid);
 
-  if (session.screen !== "consult") {
+  if (!(await syncConsultScreen(ctx))) {
     await ctx.reply(smartFormatReply(t(session.language).useMenuHint), {
       parse_mode: "HTML",
       reply_markup: mainMenuKeyboard(session.language),
@@ -192,11 +225,11 @@ async function handleUserText(ctx: Context, text: string): Promise<void> {
   const showGiftPhoto = Boolean(gift && giftPhoto && isNewGift && result.stage >= 8);
 
   if (showGiftPhoto && gift && giftPhoto) {
-    await replyWithPhotoFile(ctx, giftPhoto, result.reply);
+    await replyWithPhotoFile(ctx, giftPhoto, result.reply, undefined, { stage: result.stage });
     shownGiftByUser.set(uid, gift.externalId);
   } else {
     const scene = sceneForStage(result.stage, { isComplete: result.isComplete });
-    await replyWithMascot(ctx, result.reply, scene);
+    await replyWithMascot(ctx, result.reply, scene, undefined, { stage: result.stage });
   }
 
   if (result.isComplete) {
@@ -221,7 +254,7 @@ async function replyChatError(ctx: Context, e: unknown): Promise<void> {
 
 async function handleVoiceMessage(ctx: Context): Promise<void> {
   const session = getSession(channelUserId(ctx));
-  if (session.screen !== "consult") {
+  if (!(await syncConsultScreen(ctx))) {
     await ctx.reply(smartFormatReply(t(session.language).useMenuHint), {
       parse_mode: "HTML",
       reply_markup: mainMenuKeyboard(session.language),

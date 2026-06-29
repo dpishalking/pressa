@@ -23,6 +23,13 @@ api.get("/health", (c) =>
 
 api.get("/catalog", (c) => c.json({ items: chatEngine.listCatalog() }));
 
+api.get("/chat/status", (c) => {
+  const channel = c.req.query("channel");
+  const channelUserId = c.req.query("channelUserId");
+  if (!channel || !channelUserId) return c.json({ error: "channel and channelUserId required" }, 400);
+  return c.json(chatEngine.getChatStatus(channel, channelUserId));
+});
+
 api.post("/chat/menu", async (c) => {
   const body = await c.req.json<{ channel: string; channelUserId: string; telegramUsername?: string }>();
   const { channel, channelUserId, telegramUsername } = body;

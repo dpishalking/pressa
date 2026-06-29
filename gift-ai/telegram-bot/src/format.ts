@@ -1,7 +1,28 @@
 const ACK_RE =
   /^(Понял|Поняла|Красиво|Отлично|Здорово|Прекрасно|Хорошо|Вижу|Ясно|Конечно|Замечательно|Впечатляет|Круто|Супер|Отличный выбор)([.!…,:—\s]|$)/i;
 
+const TRANSITION_RE = /^(а теперь|теперь давайте|давайте|перейдём|перейдем|следующ)/i;
+
 const HTML_TAG_RE = /<\/?(?:b|i|u|s|code|pre|a)\b/i;
+
+const EMOJI_RE = /^\s*[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/u;
+
+const STAGE_EMOJI: Record<number, string> = {
+  1: "🎂",
+  2: "👤",
+  3: "📅",
+  4: "💰",
+  5: "❤️",
+  6: "🎯",
+  7: "🎯",
+  8: "🎁",
+  9: "⚖️",
+  10: "☎️",
+};
+
+export type FormatOpts = {
+  stage?: number;
+};
 
 export function escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -36,8 +57,55 @@ function formatSentence(sentence: string): string {
   return esc;
 }
 
-/** Умная вёрстка для Telegram HTML: вопросы жирным, подтверждения курсивом. */
-export function smartFormatReply(text: string): string {
+/** Разбивает сплошной текст на абзацы: подтверждение → переход → вопрос. */
+function structureReply(text: string): string {
+  const raw = text.trim();
+  if (!raw || /\n{2,}/.test(raw)) return raw;
+
+  const sentences = raw
+    .split(/(?<=[.!?…])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (sentences.length <= 1) return raw;
+
+  const blocks: string[] = [];
+  let i = 0;
+
+  if (ACK_RE.test(sentences[0]!)) {
+    blocks.push(sentences[0]!);
+    i = 1;
+  }
+
+  if (i < sentences.length && TRANSITION_RE.test(sentences[i]!)) {
+    blocks.push(sentences[i]!);
+    i++;
+  }
+
+  if (i < sentences.length) {
+    blocks.push(sentences.slice(i).join(" "));
+  }
+
+  if (blocks.length <= 1) return raw;
+  return blocks.join("\n\n");
+}
+
+function emojiForParagraph(paragraph: string, index: number, total: number, stage?: number): string {
+  if (EMOJI_RE.test(paragraph)) return paragraph;
+
+  let emoji: string;
+  if (index === 0 && ACK_RE.test(paragraph)) {
+    emoji = "✨";
+  } else if (index === total - 1) {
+    emoji = (stage && STAGE_EMOJI[stage]) || "💬";
+  } else {
+    emoji = "👉";
+  }
+
+  return `${emoji} ${paragraph}`;
+}
+
+/** Умная вёрстка для Telegram HTML: абзацы, эмодзи, вопросы жирным, подтверждения курсивом. */
+export function smartFormatReply(text: string, opts?: FormatOpts): string {
   const raw = text.trim();
   if (!raw) return "";
 
@@ -45,9 +113,14 @@ export function smartFormatReply(text: string): string {
     return raw;
   }
 
-  const paragraphs = raw.split(/\n{2,}/);
+  const structured = structureReply(raw);
+  const paragraphs = structured
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const withEmojis = paragraphs.map((p, i) => emojiForParagraph(p, i, paragraphs.length, opts?.stage));
 
-  return paragraphs
+  return withEmojis
     .map((paragraph) => {
       const lines = paragraph.split("\n");
       return lines
@@ -62,5 +135,5 @@ export function smartFormatReply(text: string): string {
 }
 
 export function formatGreeting(text: string): string {
-  return smartFormatReply(text);
+  return smartFormatReply(text, { stage: 1 });
 }

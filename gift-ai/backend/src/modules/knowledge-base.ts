@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "../db/client.js";
-import { canonicalExternalIds } from "./product-catalog.js";
+import { canonicalExternalIds, defaultNameForExternalId } from "./product-catalog.js";
 import type { Gift, SheetGiftRow } from "../types/index.js";
 
 function formatPrice(min: number, max: number): string {
@@ -88,7 +88,7 @@ export class KnowledgeBase {
     const existing = this.getByExternalId(row.externalId);
     const payload = {
       externalId: row.externalId,
-      name: row.name,
+      name: defaultNameForExternalId(row.externalId) ?? row.name,
       description: row.description,
       priceMin: row.priceMin,
       priceMax: row.priceMax,

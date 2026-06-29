@@ -11,6 +11,7 @@ import { normalizeLanguage } from "./languages.js";
 import { leadScoring, recommendationEngine, scoreToBand } from "./lead-scoring.js";
 import { recoverFieldsFromTranscript } from "./field-recovery.js";
 import { qualificationEngine } from "./qualification-engine.js";
+import { defaultNameForExternalId } from "./product-catalog.js";
 import { isRepeatRequest } from "./stage-guide.js";
 import { summaryGenerator } from "./summary-generator.js";
 import type { Conversation, LeadPayload, QualificationFields } from "../types/index.js";
@@ -76,11 +77,28 @@ export class ChatEngine {
     return knowledgeBase.listGifts().map((g) => ({
       id: g.id,
       externalId: g.externalId,
-      name: g.name,
+      name: defaultNameForExternalId(g.externalId) ?? g.name,
       description: g.description,
       priceLabel: formatPriceLabel(g.priceMin, g.priceMax),
       emotions: g.emotions,
     }));
+  }
+
+  getChatStatus(channel: string, channelUserId: string): {
+    inConsultation: boolean;
+    stage: number;
+    language: string;
+    conversationId: string;
+  } {
+    const conv = conversationMemory.getOrCreate(channel, channelUserId);
+    const messages = conversationMemory.getMessages(conv.id);
+    const inConsultation = messages.some((m) => m.role === "assistant");
+    return {
+      inConsultation,
+      stage: conv.stage,
+      language: conv.fields.uiLanguage || "ru",
+      conversationId: conv.id,
+    };
   }
 
   /** @deprecated use resetMenu + beginConsultation */
