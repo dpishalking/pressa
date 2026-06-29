@@ -93,7 +93,7 @@ async function main() {
 
   const username = await botUsername(token);
   const setName = `retro_pressa_gifts_by_${username}`;
-  const setTitle = "Пресся — подарки Retro Pressa";
+  const setTitle = "Чернилька — подарки Retro Pressa";
 
   console.log(`→ создаём набор ${setName}…`);
   const first = prepared[0];

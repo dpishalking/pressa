@@ -283,7 +283,7 @@ bot.command("start", async (ctx) => {
 });
 
 bot.command("stickers", async (ctx) => {
-  await ctx.reply(smartFormatReply(`🎨 Стикеры с Пресся:\n${STICKER_PACK_URL}`), { parse_mode: "HTML" });
+  await ctx.reply(smartFormatReply(`🎨 Стикеры с Чернилькой:\n${STICKER_PACK_URL}`), { parse_mode: "HTML" });
 });
 
 bot.command("cancel", async (ctx) => {
