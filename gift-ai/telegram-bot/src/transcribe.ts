@@ -2,24 +2,30 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
 const GEMINI_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
 const GEMINI_MODEL_FALLBACK = process.env.GEMINI_MODEL_FALLBACK?.trim() || "gemini-2.5-pro";
 const BOT_TOKEN = process.env.BOT_TOKEN ?? "";
+const API_URL = (process.env.API_URL ?? "http://localhost:3100").replace(/\/$/, "");
 
 const TRANSCRIBE_PROMPT =
   "Распознай речь в этом аудио. Язык — русский. Верни только текст того, что сказано, без кавычек и пояснений. Если речи нет или неразборчиво — верни пустую строку.";
 
 export function isTranscribeAvailable(): boolean {
-  return Boolean(GEMINI_API_KEY && BOT_TOKEN);
+  return Boolean(BOT_TOKEN && (API_URL || GEMINI_API_KEY));
 }
 
-export async function transcribeTelegramFile(filePath: string, mimeType: string): Promise<string> {
-  if (!GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY не задан — распознавание голоса недоступно.");
+async function transcribeViaApi(mimeType: string, audioBase64: string): Promise<string> {
+  const res = await fetch(`${API_URL}/chat/transcribe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mimeType, audioBase64 }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`API ${res.status}: ${text.slice(0, 200)}`);
   }
+  const json = (await res.json()) as { text?: string };
+  return json.text?.trim() ?? "";
+}
 
-  const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
-  const fileRes = await fetch(fileUrl);
-  if (!fileRes.ok) throw new Error("Не удалось скачать аудио из Telegram.");
-
-  const base64 = Buffer.from(await fileRes.arrayBuffer()).toString("base64");
+async function transcribeViaLocalGemini(mimeType: string, audioBase64: string): Promise<string> {
   const models = [GEMINI_MODEL, GEMINI_MODEL_FALLBACK];
   const mimes = mimeCandidates(mimeType);
 
@@ -27,7 +33,7 @@ export async function transcribeTelegramFile(filePath: string, mimeType: string)
 
   for (const mime of mimes) {
     for (const model of models) {
-      const result = await callGeminiTranscribe(model, mime, base64);
+      const result = await callGeminiTranscribe(model, mime, audioBase64);
       if (result.text.trim()) return result.text.trim();
       if (result.error) lastError = result.error;
     }
@@ -35,6 +41,33 @@ export async function transcribeTelegramFile(filePath: string, mimeType: string)
 
   if (lastError) throw new Error(lastError);
   return "";
+}
+
+export async function transcribeTelegramFile(filePath: string, mimeType: string): Promise<string> {
+  if (!BOT_TOKEN) {
+    throw new Error("BOT_TOKEN не задан");
+  }
+
+  const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${filePath}`;
+  const fileRes = await fetch(fileUrl);
+  if (!fileRes.ok) throw new Error("Не удалось скачать аудио из Telegram.");
+
+  const audioBase64 = Buffer.from(await fileRes.arrayBuffer()).toString("base64");
+
+  if (API_URL) {
+    try {
+      const text = await transcribeViaApi(mimeType, audioBase64);
+      if (text) return text;
+    } catch (e) {
+      console.warn("[transcribe] API failed, trying local Gemini", e);
+    }
+  }
+
+  if (GEMINI_API_KEY) {
+    return transcribeViaLocalGemini(mimeType, audioBase64);
+  }
+
+  throw new Error("Распознавание голоса недоступно — проверьте GEMINI_API_KEY на API-сервисе.");
 }
 
 function mimeCandidates(primary: string): string[] {

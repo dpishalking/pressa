@@ -44,7 +44,8 @@
 |------------|----------|
 | `BOT_TOKEN` | токен от @BotFather |
 | `API_URL` | URL API из шага 1 (без слэша в конце) |
-| `GEMINI_API_KEY` | тот же ключ, что у API — для распознавания голосовых |
+
+Голосовые распознаются через API — `GEMINI_API_KEY` нужен только на **сервисе API** (шаг 1). На боте ключ не обязателен.
 
 Пример: `API_URL=https://gift-ai-api-production.up.railway.app`
 

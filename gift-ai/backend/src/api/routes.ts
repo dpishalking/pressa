@@ -6,6 +6,7 @@ import { syncGiftsFromConfig } from "../integrations/sheets/workbook-sync.js";
 import { sheetSyncConfig, sheetSyncEnabled } from "../integrations/sheets/config.js";
 import { config } from "../config.js";
 import { listCanonicalProductsWithPhotos } from "../modules/gift-photos.js";
+import { transcribeAudioBase64 } from "../integrations/ai/transcribe.js";
 
 export const api = new Hono();
 
@@ -45,6 +46,22 @@ api.post("/chat/message", async (c) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : "unknown error";
     console.error("[chat/message]", msg);
+    return c.json({ error: msg }, 500);
+  }
+});
+
+api.post("/chat/transcribe", async (c) => {
+  try {
+    const body = await c.req.json<{ mimeType?: string; audioBase64?: string }>();
+    const mimeType = body.mimeType?.trim() || "audio/ogg";
+    const audioBase64 = body.audioBase64?.trim();
+    if (!audioBase64) return c.json({ error: "audioBase64 required" }, 400);
+
+    const text = await transcribeAudioBase64(mimeType, audioBase64);
+    return c.json({ text });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "unknown error";
+    console.error("[chat/transcribe]", msg);
     return c.json({ error: msg }, 500);
   }
 });

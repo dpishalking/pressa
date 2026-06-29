@@ -99,7 +99,7 @@ async function replyChatError(ctx: Context, e: unknown): Promise<void> {
 
 async function handleVoiceMessage(ctx: Context): Promise<void> {
   if (!isTranscribeAvailable()) {
-    await ctx.reply("Голосовые пока недоступны — напишите текстом или задайте GEMINI_API_KEY в настройках бота.");
+    await ctx.reply("Голосовые пока недоступны — напишите текстом.");
     return;
   }
 
@@ -211,7 +211,7 @@ bot.start({
   onStart: (info) => {
     console.log(`✅ @${info.username} — gift consultant bot`);
     if (!isTranscribeAvailable()) {
-      console.warn("⚠️  GEMINI_API_KEY not set — voice messages disabled");
+      console.warn("⚠️  Voice disabled — check BOT_TOKEN and API_URL");
     }
   },
 });
