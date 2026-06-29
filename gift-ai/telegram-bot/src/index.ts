@@ -1,8 +1,7 @@
-import { Bot, GrammyError, type Context } from "grammy";
+import { Bot, GrammyError, InlineKeyboard, type Context } from "grammy";
 import { configureBotProfile } from "./bot-profile.js";
 import { giftLabel } from "./gift-emojis.js";
 import { giftPhotoPath } from "./gift-photos.js";
-import { managerLinkHtml } from "./handoff.js";
 import { smartFormatReply } from "./format.js";
 import { t } from "./i18n.js";
 import {
@@ -244,15 +243,20 @@ async function showHandoffRecommendation(
 
   const gift = result.recommendedGift ?? null;
   const giftPhoto = gift ? giftPhotoPath(gift.externalId) : null;
-  const handoffOpts = { stage: result.stage, managerHandoff: result.managerHandoff };
-  const handoffMarkup = { reply_markup: handoffActionsKeyboard(session.language) };
+  const handoffMarkup = {
+    reply_markup: handoffActionsKeyboard(
+      result.managerHandoff.buttonLabel,
+      result.managerHandoff.url,
+      session.language,
+    ),
+  };
 
   if (gift && giftPhoto) {
-    await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, handoffOpts);
+    await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, { stage: result.stage });
     shownGiftByUser.set(uid, gift.externalId);
   } else {
     const scene = sceneForStage(result.stage);
-    await replyWithMascot(ctx, result.reply, scene, handoffMarkup, handoffOpts);
+    await replyWithMascot(ctx, result.reply, scene, handoffMarkup, { stage: result.stage });
   }
 }
 
@@ -342,11 +346,15 @@ async function handleUserTextInner(ctx: Context, text: string): Promise<void> {
   const isNewGift = Boolean(gift && shownGiftByUser.get(uid) !== gift.externalId);
   const showGiftPhoto = Boolean(gift && giftPhoto && isNewGift && result.stage >= 8);
   const handoffMarkup = result.managerHandoff
-    ? { reply_markup: handoffActionsKeyboard(session.language) }
+    ? {
+        reply_markup: handoffActionsKeyboard(
+          result.managerHandoff.buttonLabel,
+          result.managerHandoff.url,
+          session.language,
+        ),
+      }
     : undefined;
-  const formatOpts = result.managerHandoff
-    ? { stage: result.stage, managerHandoff: result.managerHandoff }
-    : { stage: result.stage };
+  const formatOpts = { stage: result.stage };
 
   if (showGiftPhoto && gift && giftPhoto) {
     await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, formatOpts);
@@ -498,11 +506,10 @@ bot.on("callback_query:data", async (ctx) => {
         conversationId: session.pendingHandoffConversationId,
       });
       await ctx.answerCallbackQuery();
-      const html = `☎️ Нажмите ссылку ниже — откроется чат с менеджером:\n\n${managerLinkHtml({ url, buttonLabel: label })}`;
-      const msg = await ctx.reply(html, {
-        parse_mode: "HTML",
-        link_preview_options: { is_disabled: true },
-      });
+      const msg = await ctx.reply(
+        "☎️ Нажмите кнопку ниже — откроется чат с менеджером, текст заявки уже будет готов.",
+        { reply_markup: new InlineKeyboard().url(label, url) },
+      );
       trackBotMessage(uid, msg.message_id);
       return;
     }

@@ -4,21 +4,27 @@ import { BOT_LANGUAGES } from "./languages.js";
 import type { BotLanguage } from "./languages.js";
 import { t } from "./i18n.js";
 
-export function handoffActionsKeyboard(lang: BotLanguage): InlineKeyboard {
+export function handoffActionsKeyboard(
+  buttonLabel: string,
+  handoffUrl: string,
+  lang: BotLanguage,
+): InlineKeyboard {
   const s = t(lang);
   return new InlineKeyboard()
+    .url(buttonLabel, handoffUrl)
+    .row()
     .text(s.catalogChooseAnother, "consult:catalog")
     .row()
     .text(s.menuBack, "menu:main");
 }
 
-/** @deprecated use handoffActionsKeyboard — ссылка на менеджера теперь в тексте сообщения */
+/** @deprecated use handoffActionsKeyboard */
 export function managerHandoffKeyboard(
-  _buttonLabel: string,
-  _handoffUrl: string,
+  buttonLabel: string,
+  handoffUrl: string,
   lang: BotLanguage,
 ): InlineKeyboard {
-  return handoffActionsKeyboard(lang);
+  return handoffActionsKeyboard(buttonLabel, handoffUrl, lang);
 }
 
 export function mainMenuKeyboard(lang: BotLanguage): InlineKeyboard {

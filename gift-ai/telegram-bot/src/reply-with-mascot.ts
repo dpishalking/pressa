@@ -1,22 +1,10 @@
 import type { Context } from "grammy";
 import { InputFile } from "grammy";
-import { managerLinkHtml } from "./handoff.js";
 import { smartFormatReply, type FormatOpts } from "./format.js";
 import { mascotImagePath, type MascotScene } from "./mascot.js";
 import { trackBotMessages, userIdFromCtx } from "./message-cleanup.js";
 
 const CAPTION_LIMIT = 1024;
-
-function formatHtml(text: string, opts?: FormatOpts): string {
-  const html = smartFormatReply(text, opts);
-  if (!opts?.managerHandoff) return html;
-  return `${html}\n\n${managerLinkHtml(opts.managerHandoff)}`;
-}
-
-function plainWithManagerLink(text: string, opts?: FormatOpts): string {
-  if (!opts?.managerHandoff) return text;
-  return `${text}\n\n${opts.managerHandoff.url}`;
-}
 
 async function sendTextMessage(
   ctx: Context,
@@ -25,7 +13,7 @@ async function sendTextMessage(
   formatOpts?: FormatOpts,
 ): Promise<void> {
   const uid = userIdFromCtx(ctx);
-  const html = formatHtml(text, formatOpts);
+  const html = smartFormatReply(text, formatOpts);
 
   try {
     const msg = await ctx.reply(html, { parse_mode: "HTML", ...extra });
@@ -33,14 +21,7 @@ async function sendTextMessage(
     return;
   } catch (e) {
     console.error("[html reply failed]", e);
-  }
-
-  try {
-    const msg = await ctx.reply(plainWithManagerLink(text, formatOpts), extra);
-    trackBotMessages(uid, [msg.message_id]);
-  } catch (e) {
-    console.error("[plain reply failed]", e);
-    const msg = await ctx.reply(text.slice(0, 4000), extra);
+    const msg = await ctx.reply(text, extra);
     trackBotMessages(uid, [msg.message_id]);
   }
 }
@@ -57,7 +38,7 @@ export async function replyWithPhotoFile(
   extra?: Parameters<Context["reply"]>[1],
   opts?: PhotoReplyOpts & FormatOpts,
 ): Promise<void> {
-  const html = formatHtml(text, opts);
+  const html = smartFormatReply(text, opts);
   const photo = new InputFile(photoPath);
   const uid = userIdFromCtx(ctx);
 
@@ -72,8 +53,7 @@ export async function replyWithPhotoFile(
       } catch (e) {
         console.error("[photo html caption failed]", e);
         try {
-          const plain = plainWithManagerLink(text, opts);
-          const msg = await ctx.replyWithPhoto(photo, { caption: plain.slice(0, CAPTION_LIMIT), ...extra });
+          const msg = await ctx.replyWithPhoto(photo, { caption: text.slice(0, CAPTION_LIMIT), ...extra });
           trackBotMessages(uid, [msg.message_id]);
           return;
         } catch (e2) {
@@ -82,7 +62,6 @@ export async function replyWithPhotoFile(
       }
     }
 
-    // Подпись не влезает (часто из‑за длинной ссылки на менеджера) — фото отдельно, текст следом.
     const photoMsg = await ctx.replyWithPhoto(photo);
     trackBotMessages(uid, [photoMsg.message_id]);
     await sendTextMessage(ctx, text, extra, opts);
