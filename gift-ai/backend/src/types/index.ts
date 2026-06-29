@@ -50,6 +50,8 @@ export type QualificationFields = {
   alternatives: string;
   recommendationReason: string;
   comments: string;
+  uiLanguage: string;
+  catalogGiftInterest: string;
 };
 
 export const EMPTY_QUALIFICATION: QualificationFields = {
@@ -78,6 +80,8 @@ export const EMPTY_QUALIFICATION: QualificationFields = {
   alternatives: "",
   recommendationReason: "",
   comments: "",
+  uiLanguage: "ru",
+  catalogGiftInterest: "",
 };
 
 export type SheetGiftRow = {

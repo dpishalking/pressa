@@ -15,7 +15,12 @@ async function sendHtml(ctx: Context, text: string, extra?: Parameters<Context["
   }
 }
 
-export async function replyWithPhotoFile(ctx: Context, photoPath: string, text: string): Promise<void> {
+export async function replyWithPhotoFile(
+  ctx: Context,
+  photoPath: string,
+  text: string,
+  extra?: Parameters<Context["reply"]>[1],
+): Promise<void> {
   const html = smartFormatReply(text);
   const photo = new InputFile(photoPath);
 
@@ -23,27 +28,32 @@ export async function replyWithPhotoFile(ctx: Context, photoPath: string, text: 
     await ctx.api.sendChatAction(ctx.chat!.id, "upload_photo");
     if (html.length <= CAPTION_LIMIT) {
       try {
-        await ctx.replyWithPhoto(photo, { caption: html, parse_mode: "HTML" });
+        await ctx.replyWithPhoto(photo, { caption: html, parse_mode: "HTML", ...extra });
         return;
       } catch (e) {
         console.error("[gift html caption failed]", e);
-        await ctx.replyWithPhoto(photo, { caption: text });
+        await ctx.replyWithPhoto(photo, { caption: text, ...extra });
         return;
       }
     }
-    await ctx.replyWithPhoto(photo);
-    await sendHtml(ctx, text);
+    await ctx.replyWithPhoto(photo, extra);
+    await sendHtml(ctx, text, extra);
   } catch (e) {
     console.error("[gift photo failed]", e);
-    await sendHtml(ctx, text);
+    await sendHtml(ctx, text, extra);
   }
 }
 
-export async function replyWithMascot(ctx: Context, text: string, scene: MascotScene): Promise<void> {
+export async function replyWithMascot(
+  ctx: Context,
+  text: string,
+  scene: MascotScene,
+  extra?: Parameters<Context["reply"]>[1],
+): Promise<void> {
   const photoPath = mascotImagePath(scene);
   if (!photoPath) {
-    await sendHtml(ctx, text);
+    await sendHtml(ctx, text, extra);
     return;
   }
-  await replyWithPhotoFile(ctx, photoPath, text);
+  await replyWithPhotoFile(ctx, photoPath, text, extra);
 }

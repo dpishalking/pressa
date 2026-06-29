@@ -1,8 +1,9 @@
 import { callGemini } from "../integrations/ai/gemini.js";
 import { logger } from "../logger.js";
 import { parseEngineResponse } from "./engine-response-parser.js";
-import { CONSULTANT_SYSTEM_PROMPT } from "./prompts.js";
+import { consultantSystemPrompt } from "./prompts.js";
 import { knowledgeBase } from "./knowledge-base.js";
+import { normalizeLanguage } from "./languages.js";
 import {
   buildStageHint,
   ensureForwardReply,
@@ -32,6 +33,10 @@ function buildUserPrompt(opts: {
       ? "Клиент хочет увидеть каталог сразу — объясни, что подберёшь точнее после пары вопросов, и задай текущий вопрос."
       : "";
 
+  const catalogNote = conversation.fields.catalogGiftInterest
+    ? `Клиент уже выбрал из каталога: «${conversation.fields.catalogGiftInterest}». На этапе 8 начни с этого варианта, если он подходит ситуации.`
+    : "";
+
   return `КАТАЛОГ ПОДАРКОВ (используй ТОЛЬКО эти ID):
 ${catalog}
 
@@ -39,7 +44,7 @@ ${catalog}
 Этап: ${conversation.stage}
 Собранные поля: ${JSON.stringify(conversation.fields, null, 2)}
 Lead score: ${conversation.leadScore}
-
+${catalogNote ? `\nКАТАЛОГ-КОНТЕКСТ: ${catalogNote}` : ""}
 ${stageHint}
 ${userNote ? `\nСИГНАЛ: ${userNote}` : ""}
 
@@ -112,11 +117,13 @@ export class QualificationEngine {
   }): Promise<EngineResponse> {
     const userPrompt = buildUserPrompt(opts);
     const attempts = [userPrompt, userPrompt + SHORT_REPLY_HINT];
+    const lang = normalizeLanguage(opts.conversation.fields.uiLanguage);
+    const system = consultantSystemPrompt(lang);
 
     try {
       for (let i = 0; i < attempts.length; i++) {
         const { text: raw, finishReason } = await callGemini({
-          system: CONSULTANT_SYSTEM_PROMPT,
+          system,
           user: attempts[i],
           json: true,
         });

@@ -2,10 +2,12 @@ import { randomUUID } from "node:crypto";
 import { getDb } from "../db/client.js";
 import { crmAdapter } from "../integrations/crm/factory.js";
 import { logger } from "../logger.js";
+import { greeting as buildGreeting, isConsultGreeting } from "./bot-i18n.js";
 import { conversationMemory } from "./conversation-memory.js";
 import { emotionAnalyzer } from "./emotion-analyzer.js";
 import { isTruncatedReply, sanitizeAssistantMessage } from "./engine-response-parser.js";
 import { knowledgeBase } from "./knowledge-base.js";
+import { normalizeLanguage } from "./languages.js";
 import { leadScoring, recommendationEngine, scoreToBand } from "./lead-scoring.js";
 import { recoverFieldsFromTranscript } from "./field-recovery.js";
 import { qualificationEngine } from "./qualification-engine.js";
@@ -13,23 +15,81 @@ import { isRepeatRequest } from "./stage-guide.js";
 import { summaryGenerator } from "./summary-generator.js";
 import type { Conversation, LeadPayload, QualificationFields } from "../types/index.js";
 
-const GREETING =
-  "Привет! Я помогу подобрать необычный подарок — такой, от которого действительно захватывает дух.\n\nМожно писать текстом или отправить голосовое — я всё пойму.\n\nДля начала — по какому поводу выбираете подарок?";
+function formatPriceLabel(min: number, max: number): string {
+  if (!min && !max) return "по запросу";
+  if (min && max && min !== max) return `${min}–${max} €`;
+  const v = min || max;
+  return `${v} €`;
+}
 
 export class ChatEngine {
-  async start(
-    channel: string,
-    channelUserId: string,
-    telegramUsername?: string,
-  ): Promise<{ reply: string; conversationId: string; stage: number }> {
+  resetMenu(channel: string, channelUserId: string, telegramUsername?: string): { conversationId: string } {
     const conv = conversationMemory.reset(channel, channelUserId);
     if (telegramUsername) {
       conversationMemory.update(conv.id, {
         fields: { ...conv.fields, telegram: `@${telegramUsername.replace(/^@/, "")}` },
       });
     }
-    conversationMemory.addMessage(conv.id, "assistant", GREETING);
-    return { reply: GREETING, conversationId: conv.id, stage: 1 };
+    return { conversationId: conv.id };
+  }
+
+  beginConsultation(opts: {
+    channel: string;
+    channelUserId: string;
+    language?: string;
+    catalogGiftExternalId?: string;
+    telegramUsername?: string;
+  }): { reply: string; conversationId: string; stage: number } {
+    const language = normalizeLanguage(opts.language);
+    const conv = conversationMemory.reset(opts.channel, opts.channelUserId);
+
+    const gifts = knowledgeBase.listGifts();
+    const catalogGift = opts.catalogGiftExternalId
+      ? gifts.find((g) => g.externalId === opts.catalogGiftExternalId || g.id === opts.catalogGiftExternalId)
+      : undefined;
+
+    const fields: Partial<QualificationFields> = {
+      uiLanguage: language,
+      catalogGiftInterest: catalogGift?.name ?? "",
+      comments: catalogGift ? `Выбрал из каталога: ${catalogGift.name}` : "",
+    };
+
+    if (opts.telegramUsername) {
+      fields.telegram = `@${opts.telegramUsername.replace(/^@/, "")}`;
+    }
+
+    conversationMemory.update(conv.id, { fields: qualificationEngine.mergeFields(conv.fields, fields) });
+
+    const reply = buildGreeting(language, catalogGift?.name);
+    conversationMemory.addMessage(conv.id, "assistant", reply);
+    return { reply, conversationId: conv.id, stage: 1 };
+  }
+
+  listCatalog(): Array<{
+    id: string;
+    externalId: string;
+    name: string;
+    description: string;
+    priceLabel: string;
+    emotions: string[];
+  }> {
+    return knowledgeBase.listGifts().map((g) => ({
+      id: g.id,
+      externalId: g.externalId,
+      name: g.name,
+      description: g.description,
+      priceLabel: formatPriceLabel(g.priceMin, g.priceMax),
+      emotions: g.emotions,
+    }));
+  }
+
+  /** @deprecated use resetMenu + beginConsultation */
+  async start(
+    channel: string,
+    channelUserId: string,
+    telegramUsername?: string,
+  ): Promise<{ reply: string; conversationId: string; stage: number }> {
+    return this.beginConsultation({ channel, channelUserId, telegramUsername, language: "ru" });
   }
 
   async handleMessage(opts: {
@@ -43,9 +103,23 @@ export class ChatEngine {
     isComplete: boolean;
     stage: number;
     recommendedGift: { id: string; externalId: string; name: string } | null;
+    needsMenu?: boolean;
   }> {
     const { channel, channelUserId, text, telegramUsername } = opts;
     let conv = conversationMemory.getOrCreate(channel, channelUserId);
+
+    const messages = conversationMemory.getMessages(conv.id);
+    const hasConsultation = messages.some((m) => m.role === "assistant");
+    if (!hasConsultation) {
+      return {
+        reply: "",
+        conversationId: conv.id,
+        isComplete: false,
+        stage: 0,
+        recommendedGift: null,
+        needsMenu: true,
+      };
+    }
 
     if (telegramUsername && !conv.fields.telegram) {
       conv = conversationMemory.update(conv.id, {
@@ -181,7 +255,7 @@ export class ChatEngine {
       const m = messages[i];
       if (m.role !== "assistant") continue;
       const cleaned = sanitizeAssistantMessage(m.content);
-      if (!cleaned || cleaned === GREETING || isTruncatedReply(cleaned)) continue;
+      if (!cleaned || isConsultGreeting(cleaned) || isTruncatedReply(cleaned)) continue;
       return `Конечно! Повторю:\n\n${cleaned}`;
     }
     return null;

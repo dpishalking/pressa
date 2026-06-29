@@ -1,0 +1,49 @@
+import { InlineKeyboard } from "grammy";
+import { BOT_LANGUAGES } from "./languages.js";
+import type { BotLanguage } from "./languages.js";
+import { t } from "./i18n.js";
+
+export function mainMenuKeyboard(lang: BotLanguage): InlineKeyboard {
+  const s = t(lang);
+  return new InlineKeyboard()
+    .text(s.menuConsult, "menu:consult")
+    .row()
+    .text(s.menuCatalog, "menu:catalog")
+    .row()
+    .text(s.menuLang, "menu:lang");
+}
+
+export function languageKeyboard(lang: BotLanguage): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (const item of BOT_LANGUAGES) {
+    kb.text(item.title, `lang:${item.id}`).row();
+  }
+  kb.text(t(lang).menuBack, "menu:main");
+  return kb;
+}
+
+export function catalogListKeyboard(
+  items: { externalId: string; name: string }[],
+  lang: BotLanguage,
+): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  for (let i = 0; i < items.length; i += 2) {
+    const a = items[i]!;
+    kb.text(a.name.slice(0, 40), `cat:view:${a.externalId}`);
+    const b = items[i + 1];
+    if (b) kb.text(b.name.slice(0, 40), `cat:view:${b.externalId}`);
+    kb.row();
+  }
+  kb.text(t(lang).menuBack, "menu:main");
+  return kb;
+}
+
+export function catalogGiftKeyboard(externalId: string, lang: BotLanguage): InlineKeyboard {
+  const s = t(lang);
+  return new InlineKeyboard()
+    .text(s.catalogPick, `cat:pick:${externalId}`)
+    .row()
+    .text(s.catalogBack, "menu:catalog")
+    .row()
+    .text(s.menuBack, "menu:main");
+}

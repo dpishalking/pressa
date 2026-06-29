@@ -21,11 +21,41 @@ api.get("/health", (c) =>
   }),
 );
 
+api.get("/catalog", (c) => c.json({ items: chatEngine.listCatalog() }));
+
+api.post("/chat/menu", async (c) => {
+  const body = await c.req.json<{ channel: string; channelUserId: string; telegramUsername?: string }>();
+  const { channel, channelUserId, telegramUsername } = body;
+  if (!channel || !channelUserId) return c.json({ error: "channel and channelUserId required" }, 400);
+  const result = chatEngine.resetMenu(channel, channelUserId, telegramUsername);
+  return c.json(result);
+});
+
+api.post("/chat/begin", async (c) => {
+  const body = await c.req.json<{
+    channel: string;
+    channelUserId: string;
+    language?: string;
+    catalogGiftExternalId?: string;
+    telegramUsername?: string;
+  }>();
+  const { channel, channelUserId, language, catalogGiftExternalId, telegramUsername } = body;
+  if (!channel || !channelUserId) return c.json({ error: "channel and channelUserId required" }, 400);
+  const result = chatEngine.beginConsultation({
+    channel,
+    channelUserId,
+    language,
+    catalogGiftExternalId,
+    telegramUsername,
+  });
+  return c.json(result);
+});
+
 api.post("/chat/start", async (c) => {
   const body = await c.req.json<{ channel: string; channelUserId: string; telegramUsername?: string }>();
   const { channel, channelUserId, telegramUsername } = body;
   if (!channel || !channelUserId) return c.json({ error: "channel and channelUserId required" }, 400);
-  const result = await chatEngine.start(channel, channelUserId, telegramUsername);
+  const result = chatEngine.beginConsultation({ channel, channelUserId, telegramUsername, language: "ru" });
   return c.json(result);
 });
 
