@@ -1,10 +1,17 @@
 import type { Context } from "grammy";
 import { InputFile } from "grammy";
+import { managerLinkHtml } from "./handoff.js";
 import { smartFormatReply, type FormatOpts } from "./format.js";
 import { mascotImagePath, type MascotScene } from "./mascot.js";
 import { trackBotMessages, userIdFromCtx } from "./message-cleanup.js";
 
 const CAPTION_LIMIT = 1024;
+
+function formatHtml(text: string, opts?: FormatOpts): string {
+  const html = smartFormatReply(text, opts);
+  if (!opts?.managerHandoff) return html;
+  return `${html}\n\n${managerLinkHtml(opts.managerHandoff)}`;
+}
 
 async function sendHtml(
   ctx: Context,
@@ -12,7 +19,7 @@ async function sendHtml(
   extra?: Parameters<Context["reply"]>[1],
   formatOpts?: FormatOpts,
 ): Promise<number | undefined> {
-  const html = smartFormatReply(text, formatOpts);
+  const html = formatHtml(text, formatOpts);
   try {
     const msg = await ctx.reply(html, { parse_mode: "HTML", ...extra });
     trackBotMessages(userIdFromCtx(ctx), [msg.message_id]);
@@ -39,8 +46,8 @@ export async function replyWithPhotoFile(
   extra?: Parameters<Context["reply"]>[1],
   opts?: PhotoReplyOpts & FormatOpts,
 ): Promise<void> {
-  const html = smartFormatReply(text, opts);
-  const captionHtml = smartFormatReply(opts?.caption ?? text, opts);
+  const html = formatHtml(text, opts);
+  const captionHtml = formatHtml(opts?.caption ?? text, opts);
   const photo = new InputFile(photoPath);
   const uid = userIdFromCtx(ctx);
 
@@ -53,7 +60,8 @@ export async function replyWithPhotoFile(
         return;
       } catch (e) {
         console.error("[gift html caption failed]", e);
-        const msg = await ctx.replyWithPhoto(photo, { caption: text, ...extra });
+        const plain = opts?.managerHandoff ? `${text}\n\n${opts.managerHandoff.url}` : text;
+        const msg = await ctx.replyWithPhoto(photo, { caption: plain, ...extra });
         trackBotMessages(uid, [msg.message_id]);
         return;
       }

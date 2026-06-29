@@ -44,6 +44,8 @@ const STAGE_EMOJI: Record<number, string> = {
 
 export type FormatOpts = {
   stage?: number;
+  /** Кликабельная ссылка «Написать менеджеру» в конце сообщения. */
+  managerHandoff?: { url: string; buttonLabel: string };
 };
 
 export function escHtml(s: string): string {

@@ -4,14 +4,21 @@ import { BOT_LANGUAGES } from "./languages.js";
 import type { BotLanguage } from "./languages.js";
 import { t } from "./i18n.js";
 
-export function managerHandoffKeyboard(buttonLabel: string, lang: BotLanguage): InlineKeyboard {
+export function handoffActionsKeyboard(lang: BotLanguage): InlineKeyboard {
   const s = t(lang);
   return new InlineKeyboard()
-    .text(buttonLabel, "handoff:open")
-    .row()
     .text(s.catalogChooseAnother, "consult:catalog")
     .row()
     .text(s.menuBack, "menu:main");
+}
+
+/** @deprecated use handoffActionsKeyboard — ссылка на менеджера теперь в тексте сообщения */
+export function managerHandoffKeyboard(
+  _buttonLabel: string,
+  _handoffUrl: string,
+  lang: BotLanguage,
+): InlineKeyboard {
+  return handoffActionsKeyboard(lang);
 }
 
 export function mainMenuKeyboard(lang: BotLanguage): InlineKeyboard {
