@@ -5,7 +5,7 @@ import { toEngagingCatalogDescription } from "./catalog-copy.js";
 import type { Gift, SheetGiftRow } from "../types/index.js";
 
 function formatPrice(min: number, max: number): string {
-  if (!min && !max) return "по запросу (зависит от объёма страниц и уровня персонализации)";
+  if (!min && !max) return "";
   if (min && max && min !== max) return `${min}–${max} ₽`;
   return `${max || min} ₽`;
 }
@@ -166,18 +166,19 @@ export class KnowledgeBase {
     if (!gifts.length) return "Каталог подарков пуст. Не предлагай конкретные товары — честно скажи, что каталог пока не заполнен.";
     return gifts
       .map(
-        (g) =>
-          `ID: ${g.externalId || g.id}
+        (g) => {
+          const price = formatPrice(g.priceMin, g.priceMax);
+          return `ID: ${g.externalId || g.id}
 Название: ${g.name}
 Описание: ${toEngagingCatalogDescription(g.description)}
-Цена: ${formatPrice(g.priceMin, g.priceMax)}
-Эмоции: ${g.emotions.join(", ")}
+${price ? `Цена: ${price}\n` : ""}Эмоции: ${g.emotions.join(", ")}
 Кому подходит: ${g.suitableFor.join(", ")}
 Поводы: ${g.occasions.join(", ")}
 Срок изготовления: ${g.leadTimeDays} дн.
 Персонализация: ${g.personalization}${g.photoUrl ? `\nФото: ${g.photoUrl}` : ""}
 Кейсы: ${g.cases}
-Отзывы: ${g.reviews}`,
+Отзывы: ${g.reviews}`;
+        },
       )
       .join("\n\n---\n\n");
   }

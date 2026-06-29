@@ -12,16 +12,15 @@ import { leadScoring, recommendationEngine, scoreToBand } from "./lead-scoring.j
 import { recoverFieldsFromTranscript } from "./field-recovery.js";
 import { qualificationEngine } from "./qualification-engine.js";
 import { defaultNameForExternalId } from "./product-catalog.js";
-import { toEngagingCatalogDescription } from "./catalog-copy.js";
+import { buildCatalogCardDescription } from "./catalog-copy.js";
 import { isRepeatRequest } from "./stage-guide.js";
 import { summaryGenerator } from "./summary-generator.js";
 import type { Conversation, LeadPayload, QualificationFields } from "../types/index.js";
 
 function formatPriceLabel(min: number, max: number): string {
-  if (!min && !max) return "по запросу";
-  if (min && max && min !== max) return `${min}–${max} €`;
-  const v = min || max;
-  return `${v} €`;
+  if (!min && !max) return "";
+  if (min && max && min !== max) return `${min}–${max} ₽`;
+  return `${max || min} ₽`;
 }
 
 export class ChatEngine {
@@ -79,7 +78,12 @@ export class ChatEngine {
       id: g.id,
       externalId: g.externalId,
       name: defaultNameForExternalId(g.externalId) ?? g.name,
-      description: toEngagingCatalogDescription(g.description),
+      description: buildCatalogCardDescription({
+        description: g.description,
+        cases: g.cases,
+        reviews: g.reviews,
+        suitableFor: g.suitableFor,
+      }),
       priceLabel: formatPriceLabel(g.priceMin, g.priceMax),
       emotions: g.emotions,
     }));

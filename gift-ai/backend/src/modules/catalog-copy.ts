@@ -11,10 +11,17 @@ const SECTION_LABELS: Record<string, string> = {
   "главная идея": "Главная идея",
   "закрывает потребность": "Почему это цепляет",
   "почему это цепляет": "Почему это цепляет",
+  "для кого": "Кому подходит",
+  "кому подходит": "Кому подходит",
+  кейсы: "Как бывает на практике",
+  "как бывает": "Как бывает на практике",
+  отзывы: "Что говорят после подарка",
+  "что говорят": "Что говорят после подарка",
 };
 
-/** ~1–2 коротких предложения на блок — влезает в подпись Telegram без простыни. */
-const SECTION_BODY_MAX = 140;
+/** До ~3 предложений на блок — хватает, чтобы продать идею, и влезает в Telegram. */
+const SECTION_BODY_MAX = 420;
+const CARD_TEXT_MAX = 2400;
 
 const VOICE_REPLACEMENTS: [RegExp, string][] = [
   [/Клиент хочет/gi, "Вы хотите"],
@@ -34,7 +41,6 @@ function toEngagingVoice(text: string): string {
   return t;
 }
 
-/** Сжимает длинный текст из таблицы до продающего панчлайна. */
 function compressBody(text: string, maxLen = SECTION_BODY_MAX): string {
   let t = toEngagingVoice(text)
     .replace(/\d+\.\s+/g, "")
@@ -49,13 +55,12 @@ function compressBody(text: string, maxLen = SECTION_BODY_MAX): string {
     const next = out ? `${out} ${sentence}` : sentence;
     if (next.length > maxLen && out) break;
     out = next;
-    if (out.length >= Math.min(maxLen, 90)) break;
   }
 
   if (!out || out.length > maxLen) {
     const cut = (out || t).slice(0, maxLen - 1);
     const lastSpace = cut.lastIndexOf(" ");
-    out = (lastSpace > 60 ? cut.slice(0, lastSpace) : cut).trim();
+    out = (lastSpace > 80 ? cut.slice(0, lastSpace) : cut).trim();
   }
 
   return out.endsWith("…") ? out : `${out.replace(/[.,;:!?…]+$/, "")}…`;
@@ -77,13 +82,13 @@ function formatSection(head: string, body: string): string | null {
   return `${label}: ${compressed}`;
 }
 
-/** Переписывает описание из БД: без «как заказать», коротко и на «вы». */
+/** Переписывает описание из БД: без «как заказать», на «вы», с сохранением смысла. */
 export function toEngagingCatalogDescription(description: string): string {
   const raw = description.trim();
   if (!raw) return raw;
 
   if (!/^[^:]+:/m.test(raw)) {
-    return compressBody(raw, SECTION_BODY_MAX * 3);
+    return compressBody(raw, SECTION_BODY_MAX * 2);
   }
 
   return raw
@@ -91,14 +96,13 @@ export function toEngagingCatalogDescription(description: string): string {
     .map((block) => {
       const m = block.match(/^([^:]+):\s*([\s\S]*)$/);
       if (!m) return compressBody(block);
-      const section = formatSection(m[1]!, m[2]!);
-      return section;
+      return formatSection(m[1]!, m[2]!);
     })
     .filter(Boolean)
     .join("\n\n");
 }
 
-/** Собирает короткое продающее описание из полей таблицы (без процесса заказа). */
+/** Собирает продающее описание из полей таблицы (без процесса заказа). */
 export function buildEngagingCatalogDescription(parts: {
   simple?: string;
   idea?: string;
@@ -110,7 +114,36 @@ export function buildEngagingCatalogDescription(parts: {
     parts.simple && formatSection("что это", parts.simple),
     parts.idea && formatSection("идея", parts.idea),
     hook && formatSection("закрывает потребность", hook),
+    parts.forWho && formatSection("для кого", parts.forWho),
   ].filter(Boolean);
 
-  return blocks.join("\n\n").slice(0, 1200);
+  return blocks.join("\n\n").slice(0, CARD_TEXT_MAX);
+}
+
+/** Полная карточка для каталога в боте: описание + кейс + отзыв. */
+export function buildCatalogCardDescription(gift: {
+  description: string;
+  cases?: string;
+  reviews?: string;
+  suitableFor?: string[];
+}): string {
+  const blocks: string[] = [];
+
+  const base = toEngagingCatalogDescription(gift.description);
+  if (base) blocks.push(base);
+
+  if (gift.cases?.trim()) {
+    const section = formatSection("кейсы", gift.cases);
+    if (section) blocks.push(section);
+  }
+
+  if (gift.reviews?.trim()) {
+    const section = formatSection("отзывы", gift.reviews);
+    if (section) blocks.push(section);
+  } else if (gift.suitableFor?.length) {
+    const section = formatSection("кому подходит", gift.suitableFor.slice(0, 6).join(", "));
+    if (section && !base.toLowerCase().includes("кому подходит")) blocks.push(section);
+  }
+
+  return blocks.join("\n\n").slice(0, CARD_TEXT_MAX);
 }
