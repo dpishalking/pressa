@@ -18,6 +18,14 @@ import { clearBotScreen, rewindBotMessages, trackBotMessage, userIdFromCtx } fro
 import { enqueueUserTask } from "./user-queue.js";
 import { getSession, setSession } from "./session.js";
 import { isTranscribeAvailable, mimeForTelegramAudio, transcribeTelegramFile } from "./transcribe.js";
+import {
+  adminStatsKeyboard,
+  fetchBotStats,
+  formatStatsMessage,
+  isBotAdmin,
+  recordBotEvent,
+  sendAdminPanel,
+} from "./admin.js";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const API_URL = (process.env.API_URL ?? "http://localhost:3100").replace(/\/$/, "");
@@ -45,6 +53,7 @@ type CatalogItem = {
 
 type ChatResponse = {
   reply: string;
+  conversationId?: string;
   stage: number;
   isComplete?: boolean;
   recommendedGift?: RecommendedGift;
@@ -144,6 +153,11 @@ async function showMainMenu(ctx: Context, language?: BotLanguage): Promise<void>
     reply_markup: mainMenuKeyboard(lang),
   });
 
+  void recordBotEvent({
+    channel: "telegram",
+    channelUserId: uid,
+    eventType: "bot_start",
+  });
   void resetBackendMenu(ctx).catch((e) => console.warn("[menu reset]", e));
 }
 
@@ -165,6 +179,12 @@ async function showCatalog(ctx: Context, opts?: { fromConsult?: boolean }): Prom
 
   await sendTrackedReply(ctx, fromConsult ? s.catalogKeepContextTitle : s.catalogTitle, {
     reply_markup: catalogListKeyboard(items, language, { consult: fromConsult }),
+  });
+
+  void recordBotEvent({
+    channel: "telegram",
+    channelUserId: uid,
+    eventType: "catalog_open",
   });
 }
 
@@ -206,22 +226,24 @@ async function showHandoffRecommendation(
   result: {
     reply: string;
     stage: number;
+    conversationId?: string;
     recommendedGift?: RecommendedGift;
     managerHandoff: { url: string; buttonLabel: string };
   },
 ): Promise<void> {
   const uid = channelUserId(ctx);
   const session = getSession(uid);
-  setSession(uid, { screen: "consult", catalogFromConsult: false });
+  setSession(uid, {
+    screen: "consult",
+    catalogFromConsult: false,
+    pendingHandoffUrl: result.managerHandoff.url,
+    pendingHandoffConversationId: result.conversationId,
+  });
 
   const gift = result.recommendedGift ?? null;
   const giftPhoto = gift ? giftPhotoPath(gift.externalId) : null;
   const handoffMarkup = {
-    reply_markup: managerHandoffKeyboard(
-      result.managerHandoff.url,
-      result.managerHandoff.buttonLabel,
-      session.language,
-    ),
+    reply_markup: managerHandoffKeyboard(result.managerHandoff.buttonLabel, session.language),
   };
 
   if (gift && giftPhoto) {
@@ -314,8 +336,17 @@ async function handleUserTextInner(ctx: Context, text: string): Promise<void> {
   const isNewGift = Boolean(gift && shownGiftByUser.get(uid) !== gift.externalId);
   const showGiftPhoto = Boolean(gift && giftPhoto && isNewGift && result.stage >= 8);
   const handoffMarkup = result.managerHandoff
-    ? { reply_markup: managerHandoffKeyboard(result.managerHandoff.url, result.managerHandoff.buttonLabel, session.language) }
+    ? {
+        reply_markup: managerHandoffKeyboard(result.managerHandoff.buttonLabel, session.language),
+      }
     : undefined;
+
+  if (result.managerHandoff) {
+    setSession(uid, {
+      pendingHandoffUrl: result.managerHandoff.url,
+      pendingHandoffConversationId: result.conversationId,
+    });
+  }
 
   if (showGiftPhoto && gift && giftPhoto) {
     await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, { stage: result.stage });
@@ -326,7 +357,12 @@ async function handleUserTextInner(ctx: Context, text: string): Promise<void> {
   }
 
   if (result.managerHandoff) {
-    setSession(uid, { screen: "consult", catalogFromConsult: false });
+    setSession(uid, {
+      screen: "consult",
+      catalogFromConsult: false,
+      pendingHandoffUrl: result.managerHandoff.url,
+      pendingHandoffConversationId: result.conversationId,
+    });
     return;
   }
 
@@ -427,13 +463,66 @@ bot.command("cancel", async (ctx) => {
   }
 });
 
+bot.command("admin", async (ctx) => {
+  if (!isBotAdmin(ctx)) {
+    await ctx.reply("Нет доступа.");
+    return;
+  }
+  try {
+    await sendAdminPanel(ctx, "all");
+  } catch (e) {
+    console.error("[admin]", e);
+    await ctx.reply("Не удалось загрузить статистику. Проверьте ADMIN_API_KEY на боте.");
+  }
+});
+
 bot.on("callback_query:data", async (ctx) => {
   const data = ctx.callbackQuery.data;
-  await ctx.answerCallbackQuery().catch(() => {});
 
   try {
     const uid = channelUserId(ctx);
     const session = getSession(uid);
+
+    if (data === "handoff:open") {
+      const url = session.pendingHandoffUrl;
+      if (!url) {
+        await ctx.answerCallbackQuery({ text: "Ссылка устарела — нажмите /start" });
+        return;
+      }
+      void recordBotEvent({
+        channel: "telegram",
+        channelUserId: uid,
+        eventType: "manager_click",
+        conversationId: session.pendingHandoffConversationId,
+      });
+      await ctx.answerCallbackQuery({ url });
+      return;
+    }
+
+    if (data === "admin:stats:all" || data === "admin:stats:today") {
+      if (!isBotAdmin(ctx)) {
+        await ctx.answerCallbackQuery();
+        return;
+      }
+      const period = data.endsWith("today") ? "today" : ("all" as const);
+      await ctx.answerCallbackQuery();
+      const stats = await fetchBotStats(period);
+      const text = formatStatsMessage(stats);
+      try {
+        await ctx.editMessageText(smartFormatReply(text), {
+          parse_mode: "HTML",
+          reply_markup: adminStatsKeyboard(period),
+        });
+      } catch {
+        await ctx.reply(smartFormatReply(text), {
+          parse_mode: "HTML",
+          reply_markup: adminStatsKeyboard(period),
+        });
+      }
+      return;
+    }
+
+    await ctx.answerCallbackQuery().catch(() => {});
 
     if (data === "menu:main") {
       await showMainMenu(ctx);

@@ -4,10 +4,10 @@ import { BOT_LANGUAGES } from "./languages.js";
 import type { BotLanguage } from "./languages.js";
 import { t } from "./i18n.js";
 
-export function managerHandoffKeyboard(url: string, buttonLabel: string, lang: BotLanguage): InlineKeyboard {
+export function managerHandoffKeyboard(buttonLabel: string, lang: BotLanguage): InlineKeyboard {
   const s = t(lang);
   return new InlineKeyboard()
-    .url(buttonLabel, url)
+    .text(buttonLabel, "handoff:open")
     .row()
     .text(s.catalogChooseAnother, "consult:catalog")
     .row()

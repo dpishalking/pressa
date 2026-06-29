@@ -9,6 +9,7 @@ import { listCanonicalProductsWithPhotos } from "../modules/gift-photos.js";
 import { normalizeLanguage } from "../modules/languages.js";
 import { transcribeAudioBase64 } from "../integrations/ai/transcribe.js";
 import { seedGifts } from "../seed.js";
+import { getBotStats, recordAnalyticsEvent, type AnalyticsEventType } from "../modules/analytics.js";
 
 export const api = new Hono();
 
@@ -231,6 +232,26 @@ admin.post("/sync-sheets", async (c) => {
 });
 
 admin.get("/stats", (c) => {
+  const period = c.req.query("period") === "today" ? "today" : "all";
+  return c.json(getBotStats(period));
+});
+
+admin.post("/events", async (c) => {
+  const body = await c.req.json<{
+    channel: string;
+    channelUserId: string;
+    eventType: AnalyticsEventType;
+    conversationId?: string;
+    metadata?: Record<string, unknown>;
+  }>();
+  if (!body.channel || !body.channelUserId || !body.eventType) {
+    return c.json({ error: "channel, channelUserId and eventType required" }, 400);
+  }
+  recordAnalyticsEvent(body);
+  return c.json({ ok: true });
+});
+
+admin.get("/stats/legacy", (c) => {
   const convs = conversationMemory.listAll(1000);
   const completed = convs.filter((x) => x.status === "completed");
   const occasions: Record<string, number> = {};

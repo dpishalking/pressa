@@ -63,6 +63,20 @@ CREATE TABLE IF NOT EXISTS leads (
   crm_lead_id TEXT,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS analytics_events (
+  id TEXT PRIMARY KEY,
+  channel TEXT NOT NULL,
+  channel_user_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  conversation_id TEXT,
+  metadata_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_analytics_event_type ON analytics_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_analytics_created ON analytics_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_analytics_user ON analytics_events(channel, channel_user_id);
 `;
 
 export function getDb(): Database.Database {

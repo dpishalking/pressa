@@ -7,6 +7,9 @@ export type UserSession = {
   screen: BotScreen;
   /** Каталог во время консультации — не сбрасывать собранные поля. */
   catalogFromConsult?: boolean;
+  /** URL для кнопки «Написать менеджеру» (callback → open). */
+  pendingHandoffUrl?: string;
+  pendingHandoffConversationId?: string;
   /** ID сообщений бота в текущем экране — удаляем при навигации или новом ответе. */
   botMessageIds?: number[];
 };

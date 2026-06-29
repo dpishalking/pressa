@@ -25,6 +25,7 @@ import { getLocalizedCatalogCard, localizedProductName, PRICE_ON_REQUEST } from 
 import type { BotLanguage } from "./languages.js";
 import { isRepeatRequest } from "./stage-guide.js";
 import { summaryGenerator } from "./summary-generator.js";
+import { recordAnalyticsEvent } from "./analytics.js";
 import type { Conversation, LeadPayload, QualificationFields } from "../types/index.js";
 
 function formatPriceLabel(min: number, max: number, lang: BotLanguage = "ru"): string {
@@ -73,6 +74,13 @@ export class ChatEngine {
 
     const reply = buildGreeting(language, catalogGift?.name);
     conversationMemory.addMessage(conv.id, "assistant", reply);
+    recordAnalyticsEvent({
+      channel: opts.channel,
+      channelUserId: opts.channelUserId,
+      eventType: "consult_begin",
+      conversationId: conv.id,
+      metadata: { catalogGift: catalogGift?.name },
+    });
     return { reply, conversationId: conv.id, stage: 1 };
   }
 
@@ -185,6 +193,14 @@ export class ChatEngine {
     });
     conversationMemory.addMessage(conv.id, "assistant", reply);
 
+    recordAnalyticsEvent({
+      channel,
+      channelUserId,
+      eventType: "handoff_shown",
+      conversationId: conv.id,
+      metadata: { gift: displayName },
+    });
+
     return {
       reply,
       conversationId: conv.id,
@@ -272,6 +288,12 @@ export class ChatEngine {
     }
 
     conversationMemory.addMessage(conv.id, "user", text);
+    recordAnalyticsEvent({
+      channel,
+      channelUserId,
+      eventType: "user_message",
+      conversationId: conv.id,
+    });
 
     if (isRepeatRequest(text)) {
       const repeatReply = this.buildRepeatReply(conv.id);
@@ -351,6 +373,13 @@ export class ChatEngine {
       const cleaned = stripManagerContactMentions(stripPhoneCollectionAsk(reply));
       reply = cleaned ? `${cleaned}\n\n${managerHandoff.prompt}` : managerHandoff.prompt;
       stage = 10;
+      recordAnalyticsEvent({
+        channel,
+        channelUserId,
+        eventType: "handoff_shown",
+        conversationId: conv.id,
+        metadata: { gift: mergedFields.recommendedGiftName },
+      });
     }
 
     const leadScore = leadScoring.compute(mergedFields, {

@@ -66,9 +66,10 @@
       try {
         const stats = await api('/admin/stats');
         document.getElementById('stats').innerHTML = `
-          <div><strong>${stats.totalConversations}</strong>диалогов</div>
-          <div><strong>${stats.completed}</strong>завершено</div>
-          <div><strong>${stats.conversionRate}%</strong>конверсия</div>
+          <div><strong>${stats.uniqueVisitors}</strong>посетителей</div>
+          <div><strong>${stats.applicationsReady}</strong>заявок</div>
+          <div><strong>${stats.managerClicks}</strong>кликов менеджеру</div>
+          <div><strong>${stats.userMessages}</strong>сообщений</div>
           <div><strong>${stats.avgLeadScore}</strong>ср. score</div>`;
         const { items } = await api('/admin/gifts');
         document.getElementById('gifts').innerHTML = items.map(g => `
