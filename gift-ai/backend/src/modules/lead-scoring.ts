@@ -58,7 +58,8 @@ export class RecommendationEngine {
   match(gifts: Gift[], fields: QualificationFields, ids: string[]): Gift[] {
     if (ids.length) {
       const byId = new Map(gifts.map((g) => [g.id, g]));
-      return ids.map((id) => byId.get(id)).filter(Boolean) as Gift[];
+      const byExternal = new Map(gifts.filter((g) => g.externalId).map((g) => [g.externalId, g]));
+      return ids.map((id) => byId.get(id) ?? byExternal.get(id)).filter(Boolean) as Gift[];
     }
 
     const occasion = fields.occasion.toLowerCase();

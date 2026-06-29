@@ -5,6 +5,7 @@ import { knowledgeBase } from "../modules/knowledge-base.js";
 import { syncGiftsFromConfig } from "../integrations/sheets/workbook-sync.js";
 import { sheetSyncConfig, sheetSyncEnabled } from "../integrations/sheets/config.js";
 import { config } from "../config.js";
+import { listCanonicalProductsWithPhotos } from "../modules/gift-photos.js";
 
 export const api = new Hono();
 
@@ -14,6 +15,7 @@ api.get("/health", (c) =>
     crm: config.CRM_PROVIDER,
     gemini: Boolean(config.GEMINI_API_KEY),
     gifts: knowledgeBase.listGifts().length,
+    catalogPhotos: listCanonicalProductsWithPhotos(),
     sheetSync: sheetSyncEnabled(),
   }),
 );

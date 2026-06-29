@@ -15,7 +15,7 @@ async function sendHtml(ctx: Context, text: string, extra?: Parameters<Context["
   }
 }
 
-async function replyWithPhotoAndCaption(ctx: Context, photoPath: string, text: string, logTag: string): Promise<void> {
+export async function replyWithPhotoFile(ctx: Context, photoPath: string, text: string): Promise<void> {
   const html = smartFormatReply(text);
   const photo = new InputFile(photoPath);
 
@@ -26,7 +26,7 @@ async function replyWithPhotoAndCaption(ctx: Context, photoPath: string, text: s
         await ctx.replyWithPhoto(photo, { caption: html, parse_mode: "HTML" });
         return;
       } catch (e) {
-        console.error(`[${logTag} html caption failed]`, e);
+        console.error("[gift html caption failed]", e);
         await ctx.replyWithPhoto(photo, { caption: text });
         return;
       }
@@ -34,13 +34,9 @@ async function replyWithPhotoAndCaption(ctx: Context, photoPath: string, text: s
     await ctx.replyWithPhoto(photo);
     await sendHtml(ctx, text);
   } catch (e) {
-    console.error(`[${logTag} photo failed]`, e);
+    console.error("[gift photo failed]", e);
     await sendHtml(ctx, text);
   }
-}
-
-export async function replyWithPhotoFile(ctx: Context, photoPath: string, text: string): Promise<void> {
-  await replyWithPhotoAndCaption(ctx, photoPath, text, "gift");
 }
 
 export async function replyWithMascot(ctx: Context, text: string, scene: MascotScene): Promise<void> {
@@ -49,5 +45,5 @@ export async function replyWithMascot(ctx: Context, text: string, scene: MascotS
     await sendHtml(ctx, text);
     return;
   }
-  await replyWithPhotoAndCaption(ctx, photoPath, text, "mascot");
+  await replyWithPhotoFile(ctx, photoPath, text);
 }

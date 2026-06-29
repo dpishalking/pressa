@@ -37,7 +37,13 @@ export class ChatEngine {
     channelUserId: string;
     text: string;
     telegramUsername?: string;
-  }): Promise<{ reply: string; conversationId: string; isComplete: boolean; stage: number }> {
+  }): Promise<{
+    reply: string;
+    conversationId: string;
+    isComplete: boolean;
+    stage: number;
+    recommendedGift: { id: string; externalId: string; name: string } | null;
+  }> {
     const { channel, channelUserId, text, telegramUsername } = opts;
     let conv = conversationMemory.getOrCreate(channel, channelUserId);
 
@@ -53,7 +59,13 @@ export class ChatEngine {
       const repeatReply = this.buildRepeatReply(conv.id);
       if (repeatReply) {
         conversationMemory.addMessage(conv.id, "assistant", repeatReply);
-        return { reply: repeatReply, conversationId: conv.id, isComplete: false, stage: conv.stage };
+        return {
+          reply: repeatReply,
+          conversationId: conv.id,
+          isComplete: false,
+          stage: conv.stage,
+          recommendedGift: null,
+        };
       }
     }
 
@@ -142,11 +154,20 @@ export class ChatEngine {
 
     conversationMemory.addMessage(conv.id, "assistant", engine.reply);
 
+    const recommended = mergedFields.recommendedGiftId
+      ? gifts.find(
+          (g) => g.id === mergedFields.recommendedGiftId || g.externalId === mergedFields.recommendedGiftId,
+        )
+      : undefined;
+
     return {
       reply: engine.reply,
       conversationId: conv.id,
       isComplete,
       stage: isComplete ? 10 : engine.stage,
+      recommendedGift: recommended
+        ? { id: recommended.id, externalId: recommended.externalId, name: recommended.name }
+        : null,
     };
   }
 

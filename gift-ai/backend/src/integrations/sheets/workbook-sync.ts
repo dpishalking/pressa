@@ -4,7 +4,26 @@ import { htmlTableToCsv, sheetSlugFromFilename } from "./html.js";
 import { fetchSheetCsv, parseGiftsFromCsv } from "./sync.js";
 import { logger } from "../../logger.js";
 import { knowledgeBase } from "../../modules/knowledge-base.js";
+import { canonicalExternalIds } from "../../modules/product-catalog.js";
 import type { SheetGiftRow } from "../../types/index.js";
+
+const CANONICAL = new Set(canonicalExternalIds());
+
+function dedupeByExternalId(rows: SheetGiftRow[]): SheetGiftRow[] {
+  const byId = new Map<string, SheetGiftRow>();
+  for (const row of rows) {
+    if (!CANONICAL.has(row.externalId)) continue;
+    byId.set(row.externalId, row);
+  }
+  return [...byId.values()];
+}
+
+function finalizeCatalogSync(): void {
+  const deactivated = knowledgeBase.deactivateNonCanonicalGifts();
+  if (deactivated) {
+    logger.info("Deactivated non-canonical catalog items", { deactivated });
+  }
+}
 
 export function workbookZipUrl(sheetId: string): string {
   return `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=zip`;
@@ -28,10 +47,7 @@ export function parseGiftsFromWorkbookZip(zipData: Uint8Array): { sheet: string;
     if (!filename.endsWith(".html") || filename.includes("resources/")) continue;
     const html = strFromU8(data);
     const csv = htmlTableToCsv(html);
-    const gifts = parseGiftsFromCsv(csv).map((g) => ({
-      ...g,
-      externalId: `${sheetSlugFromFilename(filename)}__${g.externalId}`,
-    }));
+    const gifts = dedupeByExternalId(parseGiftsFromCsv(csv));
     if (gifts.length) {
       results.push({ sheet: sheetSlugFromFilename(filename), gifts });
     }
@@ -66,6 +82,8 @@ export async function syncGiftsFromWorkbook(sheetId: string): Promise<{
     logger.info("Sheet tab synced", { sheet, count: gifts.length });
   }
 
+  finalizeCatalogSync();
+
   return { imported, updated, total, sheets: parsed.map((p) => p.sheet) };
 }
 
@@ -81,10 +99,7 @@ export async function syncGiftsFromGids(
   for (const gid of gids) {
     const url = buildSheetExportUrl(sheetId, gid);
     const csv = await fetchSheetCsv(url);
-    const gifts = parseGiftsFromCsv(csv).map((g) => ({
-      ...g,
-      externalId: `gid-${gid}__${g.externalId}`,
-    }));
+    const gifts = dedupeByExternalId(parseGiftsFromCsv(csv));
     if (!gifts.length) continue;
     sheets.push(`gid-${gid}`);
     for (const row of gifts) {
@@ -96,6 +111,7 @@ export async function syncGiftsFromGids(
   }
 
   if (!total) throw new Error("На указанных листах (gid) не найдено продуктов.");
+  finalizeCatalogSync();
   return { imported, updated, total, sheets };
 }
 
@@ -124,7 +140,7 @@ export async function syncGiftsFromConfig(opts: {
 
   for (const url of urls) {
     const csv = await fetchSheetCsv(url);
-    const gifts = parseGiftsFromCsv(csv);
+    const gifts = dedupeByExternalId(parseGiftsFromCsv(csv));
     if (!gifts.length) continue;
     sheets.push(url.slice(-20));
     for (const row of gifts) {
@@ -136,5 +152,6 @@ export async function syncGiftsFromConfig(opts: {
   }
 
   if (!total) throw new Error("В CSV не найдено продуктов.");
+  finalizeCatalogSync();
   return { imported, updated, total, sheets };
 }

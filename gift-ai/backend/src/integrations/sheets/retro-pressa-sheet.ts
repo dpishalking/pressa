@@ -52,13 +52,7 @@ const OCCASION_WORDS = [
   "выпускной",
 ];
 
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-zа-яё0-9]+/gi, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 80);
-}
+import { resolveProductExternalId } from "../../modules/product-catalog.js";
 
 function pickKeywords(text: string, dict: string[]): string[] {
   const lower = text.toLowerCase();
@@ -146,7 +140,8 @@ export function parseRetroPressaSheet(csvText: string): SheetGiftRow[] {
     if (!simple && !forWho && !idea) continue;
 
     const fullText = [simple, forWho, pain, idea, whyNow, howItWorks, benefits].join(" ");
-    const externalId = slugify(name);
+    const externalId = resolveProductExternalId(name) || resolveProductExternalId(headerName) || "";
+    if (!externalId) continue;
     if (seen.has(externalId)) continue;
     seen.add(externalId);
 

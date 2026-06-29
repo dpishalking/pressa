@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "../db/client.js";
+import { canonicalExternalIds } from "./product-catalog.js";
 import type { Gift, SheetGiftRow } from "../types/index.js";
+
+function formatPrice(min: number, max: number): string {
+  if (!min && !max) return "по запросу (зависит от объёма страниц и уровня персонализации)";
+  if (min && max && min !== max) return `${min}–${max} ₽`;
+  return `${max || min} ₽`;
+}
 
 function rowToGift(row: Record<string, unknown>): Gift {
   return {
@@ -140,16 +147,29 @@ export class KnowledgeBase {
     return r.changes > 0;
   }
 
+  /** Скрывает товары без канонического externalId (старые дубли после синка таблицы). */
+  deactivateNonCanonicalGifts(): number {
+    const allowed = new Set(canonicalExternalIds());
+    let n = 0;
+    for (const g of this.listGifts(false)) {
+      if (!g.externalId || !allowed.has(g.externalId)) {
+        this.updateGift(g.id, { active: false });
+        n++;
+      }
+    }
+    return n;
+  }
+
   formatForPrompt(): string {
     const gifts = this.listGifts();
     if (!gifts.length) return "Каталог подарков пуст. Не предлагай конкретные товары — честно скажи, что каталог пока не заполнен.";
     return gifts
       .map(
         (g) =>
-          `ID: ${g.id}
+          `ID: ${g.externalId || g.id}
 Название: ${g.name}
 Описание: ${g.description}
-Цена: ${g.priceMin}–${g.priceMax} ₽
+Цена: ${formatPrice(g.priceMin, g.priceMax)}
 Эмоции: ${g.emotions.join(", ")}
 Кому подходит: ${g.suitableFor.join(", ")}
 Поводы: ${g.occasions.join(", ")}

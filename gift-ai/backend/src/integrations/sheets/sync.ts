@@ -1,5 +1,6 @@
 import { parseCsv } from "./csv.js";
 import { isRetroPressaSheet, parseRetroPressaSheet } from "./retro-pressa-sheet.js";
+import { resolveProductExternalId } from "../../modules/product-catalog.js";
 import { logger } from "../../logger.js";
 import { knowledgeBase } from "../../modules/knowledge-base.js";
 import type { SheetGiftRow } from "../../types/index.js";
@@ -99,14 +100,21 @@ function rowToGift(headers: string[], cells: string[]): SheetGiftRow | null {
 
   if (!data.name?.trim()) return null;
 
+  const name = data.name.trim();
+  const externalId =
+    resolveProductExternalId(name) ||
+    resolveProductExternalId((data.externalId ?? "").trim()) ||
+    "";
+  if (!externalId) return null;
+
   const priceRaw = data.priceMin ?? "";
   const price = parsePriceRange(priceRaw);
   const priceMaxRaw = data.priceMax;
   const priceMax = priceMaxRaw ? Number(priceMaxRaw.replace(/[^\d]/g, "")) || price.max : price.max;
 
   return {
-    externalId: (data.externalId ?? data.name).trim(),
-    name: data.name.trim(),
+    externalId,
+    name,
     description: (data.description ?? "").trim(),
     priceMin: price.min,
     priceMax,
@@ -170,5 +178,6 @@ export async function syncGiftsFromSheetUrl(url: string): Promise<{ imported: nu
   }
 
   logger.info("Sheet sync complete", { imported, updated, total: rows.length });
+  knowledgeBase.deactivateNonCanonicalGifts();
   return { imported, updated, total: rows.length };
 }
