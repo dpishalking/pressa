@@ -1,5 +1,5 @@
 import { bitrixCall } from "./bitrix-client.js";
-import type { ExportDateRange } from "../analytics/bitrix-country-export.js";
+import type { ExportDateRange } from "../analytics/date-ranges.js";
 
 export type OpenLineSession = {
   activityId: string;

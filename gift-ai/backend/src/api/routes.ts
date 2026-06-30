@@ -10,8 +10,6 @@ import { normalizeLanguage } from "../modules/languages.js";
 import { transcribeAudioBase64 } from "../integrations/ai/transcribe.js";
 import { seedGifts } from "../seed.js";
 import { getBotStats, recordAnalyticsEvent, type AnalyticsEventType } from "../modules/analytics.js";
-import { exportBitrixAnalyticsByCountryTags, exportBitrixAnalyticsCombined, exportBitrixSalesSummary, monthRange, yesterdayRange } from "../integrations/analytics/bitrix-country-export.js";
-import { analyticsExportEnabled } from "../integrations/analytics/config.js";
 import { getDb } from "../db/client.js";
 import { parseBitrixWebhookBody } from "../integrations/alerts/bitrix-webhook-parse.js";
 import { ropAlertsConfig, ropAlertsEnabled } from "../integrations/alerts/alerts-config.js";
@@ -270,6 +268,7 @@ admin.post("/seed", (c) => {
 
 admin.post("/export-bitrix-analytics", async (c) => {
   try {
+    const { analyticsExportEnabled } = await import("../integrations/analytics/config.js");
     if (!analyticsExportEnabled()) {
       return c.json(
         {
@@ -287,6 +286,9 @@ admin.post("/export-bitrix-analytics", async (c) => {
       mode?: string;
       month?: string;
     };
+
+    const { monthRange, yesterdayRange, exportBitrixAnalyticsByCountryTags, exportBitrixAnalyticsCombined, exportBitrixSalesSummary } =
+      await import("../integrations/analytics/bitrix-country-export.js");
 
     const range =
       body.month
