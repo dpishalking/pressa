@@ -12,6 +12,7 @@ import {
   toggleLabel,
   type AlertTypeKey,
 } from "./subscriber-settings.js";
+import { buildDailyDigestStats, formatDailyDigestMessage } from "./daily-digest.js";
 
 type TelegramUpdate = {
   message?: {
@@ -51,6 +52,7 @@ function settingsText(chatId: string): string {
     `Счета без оплаты — ${toggleLabel(s.invoices)}`,
     `Проигранные сделки — ${toggleLabel(s.lostDeals)}`,
     `VIP в чате — ${toggleLabel(s.vip)}`,
+    `Итоги дня (22:00) — ${toggleLabel(s.dailyDigest)}`,
     "",
     "Как изменить:",
     "/leads on | /leads off",
@@ -58,6 +60,7 @@ function settingsText(chatId: string): string {
     "/invoices on | /invoices off",
     "/deals on | /deals off",
     "/vip on | /vip off",
+    "/digest on | /digest off",
     "",
     "/pause — тишина до завтра 9:00",
     "/resume — снова получать",
@@ -80,6 +83,8 @@ function helpText(): string {
     "/invoices on|off — счета без оплаты",
     "/deals on|off — проигранные сделки",
     "/vip on|off — VIP-клиенты",
+    "/digest — итоги сегодня (сейчас)",
+    "/digest on|off — авто-отправка в 22:00",
     "",
     "/pause — не беспокоить до утра",
     "/resume — снять паузу",
@@ -102,6 +107,7 @@ const TOGGLE_COMMANDS: Record<string, AlertTypeKey> = {
   "/invoices": "invoices",
   "/deals": "lost_deals",
   "/vip": "vip",
+  "/digest": "daily_digest",
 };
 
 function nextMorningMskIso(): string {
@@ -221,6 +227,29 @@ export async function handleCsoBotUpdate(update: TelegramUpdate): Promise<void> 
     return;
   }
 
+  if (command === "/digest" && parts.length === 1) {
+    if (!getTelegramSubscriber(chatId)) {
+      await reply(token, chatId, "Сначала подключитесь: /start");
+      return;
+    }
+    if (!ropAlertsEnabled()) {
+      await reply(token, chatId, "⚠️ Дайджест недоступен — алерты на сервере не настроены.");
+      return;
+    }
+    try {
+      const cfg = ropAlertsConfig();
+      const stats = await buildDailyDigestStats(cfg);
+      await reply(token, chatId, formatDailyDigestMessage(stats));
+    } catch (error) {
+      logger.error("CSO bot digest command failed", {
+        chatId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      await reply(token, chatId, "Не удалось собрать дайджест. Попробуйте позже.");
+    }
+    return;
+  }
+
   const toggleKey = TOGGLE_COMMANDS[command];
   if (toggleKey) {
     if (!getTelegramSubscriber(chatId)) {
@@ -268,6 +297,7 @@ export async function syncCsoBotCommands(): Promise<void> {
       commands: [
         { command: "start", description: "Подключиться к алертам" },
         { command: "settings", description: "Ваши настройки уведомлений" },
+        { command: "digest", description: "Итоги дня сейчас" },
         { command: "help", description: "Список команд" },
         { command: "status", description: "Пороги системы" },
         { command: "pause", description: "Пауза до утра" },

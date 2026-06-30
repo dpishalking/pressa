@@ -390,6 +390,29 @@ admin.post("/rop-alerts/test", async (c) => {
   }
 });
 
+admin.post("/rop-alerts/daily-digest", async (c) => {
+  try {
+    if (!ropAlertsEnabled()) {
+      return c.json({ error: "ROP alerts не настроены" }, 400);
+    }
+    const body = (await c.req.json<{ send?: boolean }>().catch(() => ({}))) as { send?: boolean };
+    const cfg = ropAlertsConfig();
+    const { buildDailyDigestStats, formatDailyDigestMessage } = await import(
+      "../integrations/alerts/daily-digest.js"
+    );
+    const stats = await buildDailyDigestStats(cfg);
+    const text = formatDailyDigestMessage(stats);
+    if (body.send) {
+      const { sendTelegramDigest } = await import("../integrations/alerts/telegram-notify.js");
+      await sendTelegramDigest(cfg, text);
+    }
+    return c.json({ ok: true, stats, preview: text });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
+});
+
 admin.post("/rop-alerts/run-checks", async (c) => {
   try {
     if (!ropAlertsEnabled()) {

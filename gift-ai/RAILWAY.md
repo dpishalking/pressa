@@ -61,16 +61,72 @@
 
 ---
 
-## Алерты РОПа (Telegram)
+## CSO-бот и алерты РОПа (@rpcs0_bot)
 
-После деплоя API на Railway:
+**Важно:** команды `/start`, `/settings` и алерты обрабатывает **сам backend** — отдельный сервис `telegram-bot` для этого не нужен. Достаточно задеплоить **только API**.
 
-1. В Variables добавьте переменные из таблицы выше (`ROP_ALERTS_*`, `PUBLIC_API_URL` = ваш Railway URL).
-2. В Bitrix24 → **Исходящий webhook** → URL: `https://ваш-railway-url/webhooks/bitrix`
-3. События: `ONCRMLEADADD`, `ONCRMLEADUPDATE`, `ONCRMDYNAMICITEMADD`, `ONCRMDYNAMICITEMUPDATE`, `ONIMCONNECTORMESSAGEADD`
-4. Токен из Bitrix → `BITRIX24_OUTBOUND_TOKEN` в Railway → Redeploy
+### Схема
 
-Локально (Mac): один раз `./gift-ai/backend/scripts/install-rop-alerts.sh` — настроит всё и даст ссылку для Bitrix.
+```mermaid
+flowchart LR
+  subgraph Bitrix
+    B[CRM события]
+  end
+  subgraph Railway
+    API[gift-ai/backend]
+    DB[(Volume /data)]
+  end
+  TG[Telegram @rpcs0_bot]
+
+  B -->|POST /webhooks/bitrix| API
+  TG -->|POST /webhooks/telegram-cso| API
+  API -->|алерты + дайджест 22:00| TG
+  API --- DB
+```
+
+### Переменные (добавить к таблице выше)
+
+| Переменная | Значение |
+|------------|----------|
+| `ROP_ALERTS_ENABLED` | `true` |
+| `ROP_ALERTS_TELEGRAM_BOT_TOKEN` | токен @rpcs0_bot |
+| `BITRIX24_WEBHOOK_URL` | входящий webhook Bitrix (для запросов в CRM) |
+| `BITRIX24_OUTBOUND_TOKEN` | токен исходящего webhook |
+| `BITRIX24_PORTAL_URL` | `https://bb-wood.bitrix24.eu` |
+| `PUBLIC_API_URL` | **ваш Railway URL** (см. шаг ниже) |
+| `ROP_ALERT_DAILY_DIGEST_ENABLED` | `true` (итоги дня в 22:00 МСК) |
+
+`ROP_ALERTS_TELEGRAM_CHAT_IDS` — опционально, если подписчики только через `/start` в боте.
+
+### Порядок действий
+
+1. **Deploy API** → Settings → Networking → **Generate Domain**  
+   Пример: `https://gift-ai-api-production.up.railway.app`
+
+2. **Variables** → `PUBLIC_API_URL` = этот URL **без слэша в конце** → **Redeploy**
+
+3. После старта API сам выставит webhook Telegram на  
+   `https://ваш-url/webhooks/telegram-cso` (см. логи: `CSO bot webhook set`).
+
+4. **Bitrix24** → Разработчикам → Исходящий webhook:
+   - URL: `https://ваш-url/webhooks/bitrix`
+   - События: `ONCRMLEADADD`, `ONCRMLEADUPDATE`, `ONCRMDYNAMICITEMADD`, `ONCRMDYNAMICITEMUPDATE`, `ONIMCONNECTORMESSAGEADD`, `ONCRMDEALUPDATE`
+   - Токен → `BITRIX24_OUTBOUND_TOKEN` в Railway → Redeploy
+
+5. **Остановите локальный API** на Mac (`launchctl unload` или закройте `npm run dev`). Иначе два процесса и нестабильный webhook.
+
+6. В Telegram: `/start` → `/settings` у @rpcs0_bot.
+
+### Проверка
+
+| Что | Как |
+|-----|-----|
+| API жив | `curl https://ваш-url/health` → `{"ok":true}` |
+| Webhook Telegram | `curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"` → `url` = ваш Railway |
+| Дайджест (превью) | `POST /admin/rop-alerts/daily-digest` с заголовком `x-admin-key` |
+| Команды бота | `/settings` в чате — ответ в течение секунды |
+
+Локально (Mac, без Railway): `./gift-ai/backend/scripts/install-rop-alerts.sh` — tunnel + webhook (нестабильно, только для отладки).
 
 ---
 

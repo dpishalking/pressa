@@ -42,7 +42,7 @@ const EMPTY_BUCKET: InvoiceCountryBucket = {
   netRevenue: 0,
 };
 
-async function listInvoicesCreatedInRange(range: InvoiceDateRange): Promise<BitrixInvoice[]> {
+export async function listInvoicesCreatedInRange(range: InvoiceDateRange): Promise<BitrixInvoice[]> {
   const items: BitrixInvoice[] = [];
   let start = 0;
 

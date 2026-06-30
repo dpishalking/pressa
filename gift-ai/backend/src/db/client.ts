@@ -109,7 +109,8 @@ CREATE TABLE IF NOT EXISTS rop_telegram_subscribers (
   notify_chats INTEGER NOT NULL DEFAULT 1,
   notify_invoices INTEGER NOT NULL DEFAULT 1,
   notify_lost_deals INTEGER NOT NULL DEFAULT 1,
-  notify_vip INTEGER NOT NULL DEFAULT 1
+  notify_vip INTEGER NOT NULL DEFAULT 1,
+  notify_daily_digest INTEGER NOT NULL DEFAULT 1
 );
 `;
 
@@ -135,6 +136,7 @@ export function getDb(): Database.Database {
     `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_invoices INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_lost_deals INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_vip INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_daily_digest INTEGER NOT NULL DEFAULT 1`,
   ]) {
     try {
       db.exec(sql);

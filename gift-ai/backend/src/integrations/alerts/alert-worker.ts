@@ -1,6 +1,7 @@
 import { logger } from "../../logger.js";
 import { ropAlertsConfig, ropAlertsEnabled } from "./alerts-config.js";
 import { isWithinRopAlertWindow } from "./alert-hours.js";
+import { maybeSendDailyDigest } from "./daily-digest.js";
 import { processDueWatches, scanUnpaidInvoices, scanUnprocessedLeads, scanRecentlyLostDeals } from "./rop-alerts.js";
 
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -12,6 +13,8 @@ async function tick(): Promise<void> {
 
   try {
     const cfg = ropAlertsConfig();
+    await maybeSendDailyDigest(cfg);
+
     if (!isWithinRopAlertWindow(cfg)) return;
 
     const fired = await processDueWatches(cfg);

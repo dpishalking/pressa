@@ -59,6 +59,14 @@ const envSchema = z.object({
   ROP_ALERT_VIP_LTV_MIN_EUR: z.coerce.number().default(1500),
   /** Интервал фоновой проверки отложенных алертов, сек. */
   ROP_ALERTS_POLL_INTERVAL_SEC: z.coerce.number().default(60),
+  /** Вечерний дайджест в Telegram (итоги дня из Bitrix). */
+  ROP_ALERT_DAILY_DIGEST_ENABLED: z
+    .string()
+    .optional()
+    .default("true")
+    .transform((v) => v === "1" || v.toLowerCase() === "true"),
+  /** Час отправки дайджеста по Москве (0–23). */
+  ROP_ALERT_DAILY_DIGEST_HOUR_MSK: z.coerce.number().min(0).max(23).default(22),
 });
 
 export type AppConfig = Omit<

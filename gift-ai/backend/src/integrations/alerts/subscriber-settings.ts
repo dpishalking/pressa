@@ -1,7 +1,7 @@
 import { getDb } from "../../db/client.js";
 import { getTelegramSubscriber } from "./telegram-subscribers.js";
 
-export type AlertTypeKey = "leads" | "chats" | "invoices" | "lost_deals" | "vip";
+export type AlertTypeKey = "leads" | "chats" | "invoices" | "lost_deals" | "vip" | "daily_digest";
 
 export type SubscriberSettings = {
   chatId: string;
@@ -12,6 +12,7 @@ export type SubscriberSettings = {
   invoices: boolean;
   lostDeals: boolean;
   vip: boolean;
+  dailyDigest: boolean;
 };
 
 const DEFAULTS: Omit<SubscriberSettings, "chatId"> = {
@@ -22,6 +23,7 @@ const DEFAULTS: Omit<SubscriberSettings, "chatId"> = {
   invoices: true,
   lostDeals: true,
   vip: true,
+  dailyDigest: true,
 };
 
 function rowToSettings(row: {
@@ -33,6 +35,7 @@ function rowToSettings(row: {
   notify_invoices: number;
   notify_lost_deals: number;
   notify_vip: number;
+  notify_daily_digest: number;
 }): SubscriberSettings {
   return {
     chatId: row.chat_id,
@@ -43,6 +46,7 @@ function rowToSettings(row: {
     invoices: row.notify_invoices !== 0,
     lostDeals: row.notify_lost_deals !== 0,
     vip: row.notify_vip !== 0,
+    dailyDigest: row.notify_daily_digest !== 0,
   };
 }
 
@@ -50,7 +54,7 @@ export function ensureSubscriberSettings(chatId: string): SubscriberSettings {
   const db = getDb();
   const existing = db
     .prepare(
-      `SELECT chat_id, active, paused_until, notify_leads, notify_chats, notify_invoices, notify_lost_deals, notify_vip
+      `SELECT chat_id, active, paused_until, notify_leads, notify_chats, notify_invoices, notify_lost_deals, notify_vip, notify_daily_digest
        FROM rop_telegram_subscribers WHERE chat_id = ?`,
     )
     .get(chatId) as
@@ -63,6 +67,7 @@ export function ensureSubscriberSettings(chatId: string): SubscriberSettings {
         notify_invoices: number;
         notify_lost_deals: number;
         notify_vip: number;
+        notify_daily_digest: number;
       }
     | undefined;
 
@@ -92,6 +97,7 @@ export function setSubscriberAlertToggle(chatId: string, key: AlertTypeKey, enab
     invoices: "notify_invoices",
     lost_deals: "notify_lost_deals",
     vip: "notify_vip",
+    daily_digest: "notify_daily_digest",
   }[key];
 
   const db = getDb();
@@ -117,6 +123,8 @@ export function subscriberWantsAlert(chatId: string, alertType: AlertTypeKey): b
       return settings.lostDeals;
     case "vip":
       return settings.vip;
+    case "daily_digest":
+      return settings.dailyDigest;
   }
 }
 

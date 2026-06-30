@@ -22,6 +22,8 @@ export type RopAlertsConfig = {
   baseCurrency: string;
   fxOverrides: Record<string, number>;
   salesStageIds: string[];
+  dailyDigestEnabled: boolean;
+  dailyDigestHourMsk: number;
 };
 
 function parseFxOverrides(raw: string): Record<string, number> {
@@ -77,5 +79,7 @@ export function ropAlertsConfig(): RopAlertsConfig {
     baseCurrency: config.ANALYTICS_BASE_CURRENCY.trim().toUpperCase() || "EUR",
     fxOverrides: parseFxOverrides(config.ANALYTICS_FX_OVERRIDES),
     salesStageIds: config.ANALYTICS_SALES_STAGE_IDS.length ? config.ANALYTICS_SALES_STAGE_IDS : ["WON"],
+    dailyDigestEnabled: config.ROP_ALERT_DAILY_DIGEST_ENABLED,
+    dailyDigestHourMsk: config.ROP_ALERT_DAILY_DIGEST_HOUR_MSK,
   };
 }
