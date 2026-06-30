@@ -12,6 +12,8 @@ export type RopAlertsConfig = {
   chatNoResponseMinutes: number;
   leadMaxAgeDays: number;
   chatMaxAgeDays: number;
+  alertFromHour: number;
+  alertToHour: number;
   invoiceMinEur: number;
   invoiceUnpaidDays: number;
   vipLtvMinEur: number;
@@ -64,6 +66,8 @@ export function ropAlertsConfig(): RopAlertsConfig {
     chatNoResponseMinutes: config.ROP_ALERT_CHAT_NO_RESPONSE_MINUTES,
     leadMaxAgeDays: config.ROP_ALERT_LEAD_MAX_AGE_DAYS,
     chatMaxAgeDays: config.ROP_ALERT_CHAT_MAX_AGE_DAYS,
+    alertFromHour: config.ROP_ALERTS_FROM_HOUR_MSK,
+    alertToHour: config.ROP_ALERTS_TO_HOUR_MSK,
     invoiceMinEur: config.ROP_ALERT_INVOICE_MIN_EUR,
     invoiceUnpaidDays: config.ROP_ALERT_INVOICE_UNPAID_DAYS,
     vipLtvMinEur: config.ROP_ALERT_VIP_LTV_MIN_EUR,

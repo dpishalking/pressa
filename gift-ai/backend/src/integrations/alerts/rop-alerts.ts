@@ -232,8 +232,8 @@ async function fireLeadNoResponseAlert(leadId: string, cfg: RopAlertsConfig, pay
   if (amountEur > 0) lines.splice(3, 0, `Сумма: ${eur(amountEur)}`);
   lines.push("", "Открыть в Bitrix:", portalLink(cfg, `/crm/lead/details/${leadId}/`));
 
-  await sendTelegramAlert(cfg, lines.join("\n"));
-  markAlertSent(alertKey, "lead_no_response");
+  const sent = await sendTelegramAlert(cfg, lines.join("\n"));
+  if (sent) markAlertSent(alertKey, "lead_no_response");
 }
 
 async function fireInvoiceUnpaidAlert(
@@ -281,8 +281,8 @@ async function fireInvoiceUnpaidAlert(
     .filter(Boolean)
     .join("\n");
 
-  await sendTelegramAlert(cfg, text);
-  markAlertSent(alertKey, "invoice_unpaid");
+  const sent = await sendTelegramAlert(cfg, text);
+  if (sent) markAlertSent(alertKey, "invoice_unpaid");
 }
 
 async function fireChatNoResponseAlert(
@@ -328,8 +328,8 @@ async function fireChatNoResponseAlert(
     .filter(Boolean)
     .join("\n");
 
-  await sendTelegramAlert(cfg, text);
-  markAlertSent(alertKey, "chat_no_response");
+  const sent = await sendTelegramAlert(cfg, text);
+  if (sent) markAlertSent(alertKey, "chat_no_response");
 }
 
 function clearChatAlert(sessionId: string): void {
@@ -381,7 +381,9 @@ export async function handleVipChatMessage(opts: {
     .filter(Boolean)
     .join("\n");
 
-  await sendTelegramAlert(cfg, text);
+  const sent = await sendTelegramAlert(cfg, text);
+  if (!sent) return;
+
   markAlertSent(cooldownKey, "vip_chat");
   scheduleVipCooldownReset(cooldownKey);
 }

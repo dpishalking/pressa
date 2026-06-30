@@ -49,6 +49,9 @@ const envSchema = z.object({
   ROP_ALERT_LEAD_MAX_AGE_DAYS: z.coerce.number().default(7),
   /** Не алертить по чатам, где последнее сообщение клиента старше N дней. */
   ROP_ALERT_CHAT_MAX_AGE_DAYS: z.coerce.number().default(3),
+  /** Часы отправки алертов по Москве (начало включительно, конец не включительно). */
+  ROP_ALERTS_FROM_HOUR_MSK: z.coerce.number().min(0).max(23).default(9),
+  ROP_ALERTS_TO_HOUR_MSK: z.coerce.number().min(1).max(24).default(22),
   ROP_ALERT_INVOICE_MIN_EUR: z.coerce.number().default(1000),
   ROP_ALERT_INVOICE_UNPAID_DAYS: z.coerce.number().default(2),
   ROP_ALERT_VIP_LTV_MIN_EUR: z.coerce.number().default(1500),

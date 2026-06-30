@@ -1,8 +1,10 @@
 import { config } from "../../config.js";
+import { config } from "../../config.js";
 import { logger } from "../../logger.js";
 import { ropAlertsConfig, ropAlertsEnabled } from "./alerts-config.js";
 import { addTelegramSubscriber } from "./telegram-subscribers.js";
 import { eur } from "./telegram-notify.js";
+import { ropAlertWindowLabel } from "./alert-hours.js";
 
 type TelegramUpdate = {
   message?: {
@@ -33,6 +35,8 @@ function helpText(): string {
     "• чат без ответа 30 мин (до 3 дн.)",
     "• счёт ≥ €1000 без оплаты 2 дня",
     "• VIP-клиент (LTV) написал в чат",
+    "",
+    `Часы алертов: ${ropAlertWindowLabel(config.ROP_ALERTS_FROM_HOUR_MSK, config.ROP_ALERTS_TO_HOUR_MSK)}`,
     "",
     "Команды:",
     "/start — подписаться",
@@ -95,6 +99,7 @@ export async function handleCsoBotUpdate(update: TelegramUpdate): Promise<void> 
         `Чат без ответа: ${cfg.chatNoResponseMinutes} мин (не старше ${cfg.chatMaxAgeDays} дн.)`,
         `Счёт без оплаты: ≥ ${eur(cfg.invoiceMinEur)}, ${cfg.invoiceUnpaidDays} дн.`,
         `VIP LTV: ≥ ${eur(cfg.vipLtvMinEur)}`,
+        `Часы: ${ropAlertWindowLabel(cfg.alertFromHour, cfg.alertToHour)}`,
         "",
         "Bitrix webhook → API → этот чат",
       ].join("\n"),

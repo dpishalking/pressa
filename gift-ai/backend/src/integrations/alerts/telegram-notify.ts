@@ -1,11 +1,21 @@
 import { logger } from "../../logger.js";
 import type { RopAlertsConfig } from "./alerts-config.js";
+import { isWithinRopAlertWindow } from "./alert-hours.js";
 
-export async function sendTelegramAlert(cfg: RopAlertsConfig, text: string): Promise<void> {
+export async function sendTelegramAlert(cfg: RopAlertsConfig, text: string): Promise<boolean> {
+  if (!isWithinRopAlertWindow(cfg)) {
+    logger.debug("ROP alert skipped outside Moscow hours", {
+      from: cfg.alertFromHour,
+      to: cfg.alertToHour,
+    });
+    return false;
+  }
+
   const token = cfg.telegramBotToken;
   const chatIds = cfg.telegramChatIds;
-  if (!token || !chatIds.length) return;
+  if (!token || !chatIds.length) return false;
 
+  let sent = false;
   for (const chatId of chatIds) {
     try {
       const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -21,6 +31,7 @@ export async function sendTelegramAlert(cfg: RopAlertsConfig, text: string): Pro
       if (!res.ok || !json.ok) {
         throw new Error(json.description ?? `HTTP ${res.status}`);
       }
+      sent = true;
     } catch (error) {
       logger.error("Telegram alert failed", {
         chatId,
@@ -28,6 +39,7 @@ export async function sendTelegramAlert(cfg: RopAlertsConfig, text: string): Pro
       });
     }
   }
+  return sent;
 }
 
 export function eur(amount: number): string {
