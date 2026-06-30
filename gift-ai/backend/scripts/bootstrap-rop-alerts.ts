@@ -82,6 +82,7 @@ function printBitrixInstructions(opts: {
   for (const event of [
     "ONCRMLEADADD",
     "ONCRMLEADUPDATE",
+    "ONCRMDEALUPDATE",
     "ONCRMDYNAMICITEMADD",
     "ONCRMDYNAMICITEMUPDATE",
     "ONIMCONNECTORMESSAGEADD",

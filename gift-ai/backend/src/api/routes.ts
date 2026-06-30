@@ -378,7 +378,8 @@ admin.post("/rop-alerts/test", async (c) => {
         "✅ Тест алертов РОПа",
         "",
         `Порог лида: ${eur(cfg.leadMinEur)} / ${cfg.leadNoResponseMinutes} мин`,
-        `Порог счёта: ${eur(cfg.invoiceMinEur)} / ${cfg.invoiceUnpaidDays} дн.`,
+        `Счёт: ${cfg.invoiceMinEur > 0 ? eur(cfg.invoiceMinEur) : "любая сумма"} / ${cfg.invoiceUnpaidDays} дн.`,
+        `Проигранная сделка: ≥ ${eur(cfg.lostDealMinEur)}`,
         `VIP LTV: ${eur(cfg.vipLtvMinEur)}`,
       ].join("\n"),
     );

@@ -2,7 +2,9 @@ import {
   getBitrixDealById,
   getBitrixLeadById,
   listBitrixContactsByIds,
+  listBitrixDeals,
   listBitrixLeads,
+  listBitrixStatusLabels,
   resolveBitrixUserNames,
 } from "../crm/bitrix-client.js";
 import {
@@ -191,7 +193,7 @@ export async function scheduleInvoiceWatch(invoiceId: string, cfg?: RopAlertsCon
 
   const converter = await fx(settings);
   const amountEur = converter.convert(invoice.opportunity ?? 0, invoice.currencyId);
-  if (amountEur < settings.invoiceMinEur) return;
+  if (settings.invoiceMinEur > 0 && amountEur < settings.invoiceMinEur) return;
 
   const created = invoice.createdTime ?? new Date().toISOString();
   const dueAt = new Date(Date.parse(created) + settings.invoiceUnpaidDays * 86_400_000).toISOString();
@@ -252,7 +254,7 @@ async function fireInvoiceUnpaidAlert(
 
   const converter = await fx(cfg);
   const amountEur = Number(payload.amountEur) || converter.convert(invoice.opportunity ?? 0, invoice.currencyId);
-  if (amountEur < cfg.invoiceMinEur) return;
+  if (cfg.invoiceMinEur > 0 && amountEur < cfg.invoiceMinEur) return;
 
   const daysUnpaid = daysBetween(invoice.createdTime ?? "");
   if (daysUnpaid < cfg.invoiceUnpaidDays) return;
@@ -272,13 +274,15 @@ async function fireInvoiceUnpaidAlert(
   }
 
   const text = [
-    "🟠 Крупный счёт без оплаты",
+    "🟠 Счёт без оплаты",
     "",
     `Сумма: ${eur(amountEur)}`,
     `Счёт #${invoiceId}`,
     clientName ? `Клиент: ${clientName}` : "",
     `Без оплаты: ${daysUnpaid} дн.`,
     `Менеджер: ${manager}`,
+    "",
+    "Открыть в Bitrix:",
     dealLink || portalLink(cfg, `/crm/type/31/details/${invoiceId}/`),
   ]
     .filter(Boolean)
@@ -288,6 +292,69 @@ async function fireInvoiceUnpaidAlert(
     relevantAt: invoice.createdTime ?? new Date().toISOString(),
   });
   if (shouldFinalizeAlert(result)) markAlertSent(alertKey, "invoice_unpaid");
+}
+
+async function dealAmountEur(deal: { OPPORTUNITY?: string; CURRENCY_ID?: string }, cfg: RopAlertsConfig): Promise<number> {
+  const converter = await fx(cfg);
+  return converter.convert(Number.parseFloat(deal.OPPORTUNITY ?? "0") || 0, deal.CURRENCY_ID);
+}
+
+async function getLostDeal(dealId: string): Promise<Awaited<ReturnType<typeof getBitrixDealById>>> {
+  const deals = await listBitrixDeals(
+    { ID: dealId, STAGE_SEMANTIC_ID: "F" },
+    ["OPPORTUNITY", "CURRENCY_ID", "TITLE", "ASSIGNED_BY_ID", "DATE_MODIFY", "CLOSEDATE", "STAGE_ID", "COMMENTS"],
+  );
+  return deals[0] ?? null;
+}
+
+export async function fireLostDealAlert(dealId: string, cfg?: RopAlertsConfig): Promise<void> {
+  const settings = cfg ?? ropAlertsConfig();
+  const alertKey = `lost_deal:${dealId}`;
+  if (wasAlertSent(alertKey)) return;
+
+  const deal = await getLostDeal(dealId);
+  if (!deal) return;
+
+  const amountEur = await dealAmountEur(deal, settings);
+  if (settings.lostDealMinEur > 0 && amountEur < settings.lostDealMinEur) return;
+
+  const stageLabels = await listBitrixStatusLabels("DEAL_STAGE");
+  const stageName = stageLabels.get(deal.STAGE_ID ?? "") ?? deal.STAGE_ID ?? "проиграна";
+  const managerIds = await resolveBitrixUserNames([String(deal.ASSIGNED_BY_ID ?? "")]);
+  const manager = managerIds.get(String(deal.ASSIGNED_BY_ID ?? "")) ?? "не назначен";
+  const reason = (deal.COMMENTS ?? "").trim().slice(0, 200);
+
+  const lines = [
+    "❌ Проиграна крупная сделка",
+    "",
+    `Сумма: ${eur(amountEur)}`,
+    `Сделка: ${deal.TITLE ?? "—"}`,
+    `Стадия: ${stageName}`,
+    `Менеджер: ${manager}`,
+  ];
+  if (reason) lines.push(`Комментарий: ${reason}`);
+  lines.push("", "Нужно разобрать причину отказа.", "", "Открыть в Bitrix:", portalLink(settings, `/crm/deal/details/${dealId}/`));
+
+  const relevantAt = deal.DATE_MODIFY ?? deal.CLOSEDATE ?? new Date().toISOString();
+  const result = await sendTelegramAlert(settings, lines.join("\n"), { relevantAt });
+  if (shouldFinalizeAlert(result)) markAlertSent(alertKey, "lost_deal");
+}
+
+export async function scanRecentlyLostDeals(cfg?: RopAlertsConfig): Promise<void> {
+  const settings = cfg ?? ropAlertsConfig();
+  if (!isWithinRopAlertWindow(settings)) return;
+
+  const deals = await listBitrixDeals(
+    {
+      STAGE_SEMANTIC_ID: "F",
+      ">=DATE_MODIFY": daysAgoIso(1),
+    },
+    ["OPPORTUNITY", "CURRENCY_ID", "TITLE", "ASSIGNED_BY_ID", "DATE_MODIFY", "CLOSEDATE", "STAGE_ID", "COMMENTS"],
+  );
+
+  for (const deal of deals) {
+    await fireLostDealAlert(String(deal.ID), settings);
+  }
 }
 
 async function fireChatNoResponseAlert(
@@ -480,7 +547,7 @@ export async function scanUnpaidInvoices(cfg?: RopAlertsConfig): Promise<void> {
 
   for (const invoice of invoices) {
     const amountEur = converter.convert(invoice.opportunity ?? 0, invoice.currencyId);
-    if (amountEur < settings.invoiceMinEur) continue;
+    if (settings.invoiceMinEur > 0 && amountEur < settings.invoiceMinEur) continue;
 
     const daysUnpaid = daysBetween(invoice.createdTime ?? "");
     if (daysUnpaid >= settings.invoiceUnpaidDays) {
@@ -527,6 +594,14 @@ export async function handleBitrixWebhook(payload: BitrixWebhookPayload): Promis
       clearAlertSent(`lead_no_response:${leadId}`);
     }
     return { ok: true, handled: "lead" };
+  }
+
+  if (event === "ONCRMDEALUPDATE" || event === "ONCRMDEALADD") {
+    const dealId = extractEntityId(payload.data);
+    if (!dealId) return { ok: true };
+
+    await fireLostDealAlert(dealId, cfg);
+    return { ok: true, handled: "deal" };
   }
 
   if (

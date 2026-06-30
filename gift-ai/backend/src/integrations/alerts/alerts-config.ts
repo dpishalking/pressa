@@ -16,6 +16,7 @@ export type RopAlertsConfig = {
   alertToHour: number;
   invoiceMinEur: number;
   invoiceUnpaidDays: number;
+  lostDealMinEur: number;
   vipLtvMinEur: number;
   pollIntervalSec: number;
   baseCurrency: string;
@@ -70,6 +71,7 @@ export function ropAlertsConfig(): RopAlertsConfig {
     alertToHour: config.ROP_ALERTS_TO_HOUR_MSK,
     invoiceMinEur: config.ROP_ALERT_INVOICE_MIN_EUR,
     invoiceUnpaidDays: config.ROP_ALERT_INVOICE_UNPAID_DAYS,
+    lostDealMinEur: config.ROP_ALERT_LOST_DEAL_MIN_EUR,
     vipLtvMinEur: config.ROP_ALERT_VIP_LTV_MIN_EUR,
     pollIntervalSec: config.ROP_ALERTS_POLL_INTERVAL_SEC,
     baseCurrency: config.ANALYTICS_BASE_CURRENCY.trim().toUpperCase() || "EUR",

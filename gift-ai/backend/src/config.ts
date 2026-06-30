@@ -52,8 +52,10 @@ const envSchema = z.object({
   /** Часы отправки алертов по Москве (начало включительно, конец не включительно). */
   ROP_ALERTS_FROM_HOUR_MSK: z.coerce.number().min(0).max(23).default(9),
   ROP_ALERTS_TO_HOUR_MSK: z.coerce.number().min(1).max(24).default(22),
-  ROP_ALERT_INVOICE_MIN_EUR: z.coerce.number().default(1000),
+  ROP_ALERT_INVOICE_MIN_EUR: z.coerce.number().default(0),
   ROP_ALERT_INVOICE_UNPAID_DAYS: z.coerce.number().default(2),
+  /** Мин. сумма проигранной сделки для алерта; 0 = любая проигранная. */
+  ROP_ALERT_LOST_DEAL_MIN_EUR: z.coerce.number().default(500),
   ROP_ALERT_VIP_LTV_MIN_EUR: z.coerce.number().default(1500),
   /** Интервал фоновой проверки отложенных алертов, сек. */
   ROP_ALERTS_POLL_INTERVAL_SEC: z.coerce.number().default(60),

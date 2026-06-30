@@ -1,5 +1,4 @@
 import { config } from "../../config.js";
-import { config } from "../../config.js";
 import { logger } from "../../logger.js";
 import { ropAlertsConfig, ropAlertsEnabled } from "./alerts-config.js";
 import { addTelegramSubscriber } from "./telegram-subscribers.js";
@@ -33,7 +32,8 @@ function helpText(): string {
     "Уведомления:",
     "• лид без ответа 30 мин (только свежие, до 7 дн.)",
     "• чат без ответа 30 мин (до 3 дн.)",
-    "• счёт ≥ €1000 без оплаты 2 дня",
+    "• счёт без оплаты (любая сумма) 2 дня",
+    "• проигранная сделка ≥ €500 — разобрать",
     "• VIP-клиент (LTV) написал в чат",
     "",
     `Часы алертов: ${ropAlertWindowLabel(config.ROP_ALERTS_FROM_HOUR_MSK, config.ROP_ALERTS_TO_HOUR_MSK)}`,
@@ -98,6 +98,8 @@ export async function handleCsoBotUpdate(update: TelegramUpdate): Promise<void> 
         "",
         `Лид без ответа: ${cfg.leadNoResponseMinutes} мин (не старше ${cfg.leadMaxAgeDays} дн.)`,
         `Чат без ответа: ${cfg.chatNoResponseMinutes} мин (не старше ${cfg.chatMaxAgeDays} дн.)`,
+        `Счёт без оплаты: любая сумма / ${cfg.invoiceUnpaidDays} дн.`,
+        `Проигранная сделка: ≥ ${eur(cfg.lostDealMinEur)}`,
         `Счёт без оплаты: ≥ ${eur(cfg.invoiceMinEur)}, ${cfg.invoiceUnpaidDays} дн.`,
         `VIP LTV: ≥ ${eur(cfg.vipLtvMinEur)}`,
         `Часы: ${ropAlertWindowLabel(cfg.alertFromHour, cfg.alertToHour)}`,
