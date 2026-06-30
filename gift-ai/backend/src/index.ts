@@ -7,6 +7,8 @@ import { sheetSyncConfig, sheetSyncEnabled } from "./integrations/sheets/config.
 import { knowledgeBase } from "./modules/knowledge-base.js";
 import { logger } from "./logger.js";
 import { seedGifts } from "./seed.js";
+import { startRopAlertsWorker } from "./integrations/alerts/alert-worker.js";
+import { syncCsoBotWebhook } from "./integrations/alerts/cso-bot.js";
 
 getDb();
 seedGifts();
@@ -31,5 +33,7 @@ serve(
       port: config.PORT,
       crm: config.CRM_PROVIDER,
     });
+    startRopAlertsWorker();
+    void syncCsoBotWebhook();
   },
 );

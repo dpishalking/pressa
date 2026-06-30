@@ -10,7 +10,20 @@ import { normalizeLanguage } from "../modules/languages.js";
 import { transcribeAudioBase64 } from "../integrations/ai/transcribe.js";
 import { seedGifts } from "../seed.js";
 import { getBotStats, recordAnalyticsEvent, type AnalyticsEventType } from "../modules/analytics.js";
+import { exportBitrixAnalyticsByCountryTags, exportBitrixAnalyticsCombined, exportBitrixSalesSummary, monthRange, yesterdayRange } from "../integrations/analytics/bitrix-country-export.js";
+import { analyticsExportEnabled } from "../integrations/analytics/config.js";
 import { getDb } from "../db/client.js";
+import { parseBitrixWebhookBody } from "../integrations/alerts/bitrix-webhook-parse.js";
+import { ropAlertsConfig, ropAlertsEnabled } from "../integrations/alerts/alerts-config.js";
+import { handleBitrixWebhook } from "../integrations/alerts/rop-alerts.js";
+import { handleCsoBotUpdate } from "../integrations/alerts/cso-bot.js";
+import { sendTelegramAlert, eur } from "../integrations/alerts/telegram-notify.js";
+
+function verifyOutboundTokenEarly(token?: string): boolean {
+  const expected = config.BITRIX24_OUTBOUND_TOKEN.trim();
+  if (!expected) return true;
+  return token === expected;
+}
 
 export const api = new Hono();
 
@@ -25,6 +38,10 @@ api.get("/health", (c) => {
     gifts: knowledgeBase.listGifts().length,
     catalogPhotos: listCanonicalProductsWithPhotos(),
     sheetSync: sheetSyncEnabled(),
+    ropAlerts: ropAlertsEnabled(),
+    ropAlertsWebhook: ropAlertsEnabled()
+      ? `${(config.PUBLIC_API_URL || `http://localhost:${config.PORT}`).replace(/\/$/, "")}/webhooks/bitrix`
+      : undefined,
     conversations,
     userMessages: messages,
   });
@@ -134,6 +151,40 @@ api.post("/chat/message", async (c) => {
   }
 });
 
+api.post("/webhooks/bitrix", async (c) => {
+  try {
+    if (!ropAlertsEnabled()) {
+      return c.json({ ok: false, error: "ROP alerts disabled" }, 503);
+    }
+
+    const payload = await parseBitrixWebhookBody(c.req.raw);
+    if (!verifyOutboundTokenEarly(payload.applicationToken)) {
+      return c.json({ ok: false }, 401);
+    }
+
+    void handleBitrixWebhook(payload).catch((error) => {
+      console.error("[webhooks/bitrix] async handler failed", error instanceof Error ? error.message : String(error));
+    });
+    return c.json({ ok: true, accepted: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[webhooks/bitrix]", msg);
+    return c.json({ ok: false, error: msg }, 500);
+  }
+});
+
+api.post("/webhooks/telegram-cso", async (c) => {
+  try {
+    const update = await c.req.json();
+    await handleCsoBotUpdate(update);
+    return c.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("[webhooks/telegram-cso]", msg);
+    return c.json({ ok: false, error: msg }, 500);
+  }
+});
+
 api.post("/chat/transcribe", async (c) => {
   try {
     const body = await c.req.json<{ mimeType?: string; audioBase64?: string }>();
@@ -217,6 +268,64 @@ admin.post("/seed", (c) => {
   }
 });
 
+admin.post("/export-bitrix-analytics", async (c) => {
+  try {
+    if (!analyticsExportEnabled()) {
+      return c.json(
+        {
+          error:
+            "Нужны BITRIX24_WEBHOOK_URL, ANALYTICS_SHEET_ID, GOOGLE_SERVICE_ACCOUNT_JSON и ANALYTICS_COUNTRY_TAGS",
+        },
+        400,
+      );
+    }
+
+    const body = (await c.req.json<{ from?: string; to?: string; tags?: string[]; mode?: string; month?: string }>().catch(() => ({}))) as {
+      from?: string;
+      to?: string;
+      tags?: string[];
+      mode?: string;
+      month?: string;
+    };
+
+    const range =
+      body.month
+        ? monthRange(body.month)
+        : body.from && body.to
+          ? { from: body.from, to: body.to }
+          : body.from
+            ? (() => {
+                const [year, month, day] = body.from!.split("-").map(Number);
+                const next = new Date(Date.UTC(year, month - 1, day + 1));
+                return { from: body.from!, to: next.toISOString().slice(0, 10) };
+              })()
+            : yesterdayRange();
+
+    const mode = body.mode === "by-country" ? "by-country" : body.mode === "summary" || body.month ? "summary" : "combined";
+
+    const summary =
+      mode === "summary"
+        ? await exportBitrixSalesSummary({
+            range,
+            month: body.month,
+            countryTags: body.tags,
+          })
+        : mode === "combined"
+          ? await exportBitrixAnalyticsCombined({
+              range,
+              countryTags: body.tags,
+            })
+          : await exportBitrixAnalyticsByCountryTags({
+              range,
+              countryTags: body.tags,
+            });
+    return c.json({ ok: true, mode, ...summary });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
+});
+
 admin.post("/sync-sheets", async (c) => {
   try {
     const body = (await c.req.json<{ url?: string; sheetId?: string }>().catch(() => ({}))) as {
@@ -255,6 +364,45 @@ admin.post("/events", async (c) => {
   }
   recordAnalyticsEvent(body);
   return c.json({ ok: true });
+});
+
+admin.post("/rop-alerts/test", async (c) => {
+  try {
+    if (!ropAlertsEnabled()) {
+      return c.json({ error: "ROP alerts не настроены" }, 400);
+    }
+    const cfg = ropAlertsConfig();
+    await sendTelegramAlert(
+      cfg,
+      [
+        "✅ Тест алертов РОПа",
+        "",
+        `Порог лида: ${eur(cfg.leadMinEur)} / ${cfg.leadNoResponseMinutes} мин`,
+        `Порог счёта: ${eur(cfg.invoiceMinEur)} / ${cfg.invoiceUnpaidDays} дн.`,
+        `VIP LTV: ${eur(cfg.vipLtvMinEur)}`,
+      ].join("\n"),
+    );
+    return c.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
+});
+
+admin.post("/rop-alerts/run-checks", async (c) => {
+  try {
+    if (!ropAlertsEnabled()) {
+      return c.json({ error: "ROP alerts не настроены" }, 400);
+    }
+    const { processDueWatches, scanUnpaidInvoices } = await import("../integrations/alerts/rop-alerts.js");
+    const cfg = ropAlertsConfig();
+    const fired = await processDueWatches(cfg);
+    await scanUnpaidInvoices(cfg);
+    return c.json({ ok: true, fired });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
 });
 
 admin.get("/stats/legacy", (c) => {

@@ -1,0 +1,39 @@
+# Ежедневная выгрузка «Действия РОП» без VPS (GitHub Actions cron)
+# Время: 07:30 по Москве (04:30 UTC)
+
+name: Export ROP actions
+
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch: # ручной запуск в GitHub → Actions → Run workflow
+
+jobs:
+  export-actions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: gift-ai/backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Export to Google Sheets
+        run: npx tsx src/export-actions.ts
+        env:
+          BITRIX24_WEBHOOK_URL: ${{ secrets.BITRIX24_WEBHOOK_URL }}
+          ACTIONS_SHEET_ID: ${{ secrets.ACTIONS_SHEET_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          ANALYTICS_BASE_CURRENCY: EUR
+          ANALYTICS_COUNTRY_TAGS: другие
+          BITRIX_COUNTRY_FIELD: ${{ secrets.BITRIX_COUNTRY_FIELD }}
+          BITRIX_DEAL_COUNTRY_FIELD: ${{ secrets.BITRIX_DEAL_COUNTRY_FIELD }}
+          ANALYTICS_SALES_STAGE_IDS: WON

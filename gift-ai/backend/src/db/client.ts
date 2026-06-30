@@ -77,6 +77,33 @@ CREATE TABLE IF NOT EXISTS analytics_events (
 CREATE INDEX IF NOT EXISTS idx_analytics_event_type ON analytics_events(event_type);
 CREATE INDEX IF NOT EXISTS idx_analytics_created ON analytics_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_analytics_user ON analytics_events(channel, channel_user_id);
+
+CREATE TABLE IF NOT EXISTS rop_alert_sent (
+  alert_key TEXT PRIMARY KEY,
+  alert_type TEXT NOT NULL,
+  sent_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rop_alert_watch (
+  id TEXT PRIMARY KEY,
+  watch_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  check_after TEXT NOT NULL,
+  payload_json TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_rop_alert_watch_pending
+  ON rop_alert_watch(status, check_after);
+
+CREATE TABLE IF NOT EXISTS rop_telegram_subscribers (
+  chat_id TEXT PRIMARY KEY,
+  username TEXT NOT NULL DEFAULT '',
+  first_name TEXT NOT NULL DEFAULT '',
+  subscribed_at TEXT NOT NULL
+);
 `;
 
 export function getDb(): Database.Database {

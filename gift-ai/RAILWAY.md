@@ -19,6 +19,12 @@
 | `DATABASE_PATH` | `/data/gift-ai.db` |
 | `BITRIX24_WEBHOOK_URL` | (когда будет) URL вебхука Bitrix |
 | `BITRIX24_TAG` | `Подбор подарка AI` |
+| `ROP_ALERTS_ENABLED` | `true` |
+| `ROP_ALERTS_TELEGRAM_BOT_TOKEN` | тот же `BOT_TOKEN` что у бота |
+| `ROP_ALERTS_TELEGRAM_CHAT_IDS` | Telegram user id РОПа (число) |
+| `BITRIX24_OUTBOUND_TOKEN` | токен исходящего webhook Bitrix |
+| `BITRIX24_PORTAL_URL` | `https://ваш-портал.bitrix24.eu` |
+| `PUBLIC_API_URL` | публичный URL этого сервиса (без слэша) |
 
 `PORT` Railway подставит сам — не трогайте.
 
@@ -52,6 +58,19 @@
 Пример: `API_URL=https://gift-ai-api-production.up.railway.app`
 
 4. Deploy. В логах: `✅ @rpgifts_bot — gift consultant bot`
+
+---
+
+## Алерты РОПа (Telegram)
+
+После деплоя API на Railway:
+
+1. В Variables добавьте переменные из таблицы выше (`ROP_ALERTS_*`, `PUBLIC_API_URL` = ваш Railway URL).
+2. В Bitrix24 → **Исходящий webhook** → URL: `https://ваш-railway-url/webhooks/bitrix`
+3. События: `ONCRMLEADADD`, `ONCRMLEADUPDATE`, `ONCRMDYNAMICITEMADD`, `ONCRMDYNAMICITEMUPDATE`, `ONIMCONNECTORMESSAGEADD`
+4. Токен из Bitrix → `BITRIX24_OUTBOUND_TOKEN` в Railway → Redeploy
+
+Локально (Mac): один раз `./gift-ai/backend/scripts/install-rop-alerts.sh` — настроит всё и даст ссылку для Bitrix.
 
 ---
 

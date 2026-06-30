@@ -10,13 +10,56 @@ const envSchema = z.object({
   DATABASE_PATH: z.string().default("./data/gift-ai.db"),
   BITRIX24_WEBHOOK_URL: z.string().optional().default(""),
   BITRIX24_TAG: z.string().default("Подбор подарка AI"),
+  ANALYTICS_SHEET_ID: z.string().optional().default(""),
+  ANALYTICS_CHAT_SHEET_ID: z.string().optional().default(""),
+  ACTIONS_SHEET_ID: z.string().optional().default(""),
+  MANAGERS_SHEET_ID: z.string().optional().default(""),
+  GOOGLE_SERVICE_ACCOUNT_JSON: z.string().optional().default(""),
+  ANALYTICS_COUNTRY_TAGS: z.string().optional().default(""),
+  BITRIX_COUNTRY_FIELD: z.string().optional().default(""),
+  BITRIX_DEAL_COUNTRY_FIELD: z.string().optional().default(""),
+  ANALYTICS_BASE_CURRENCY: z.string().optional().default("EUR"),
+  ANALYTICS_FX_OVERRIDES: z.string().optional().default(""),
+  /** Стадии сделок для сводки продаж, через запятую. По умолчанию WON — только основная воронка. */
+  ANALYTICS_SALES_STAGE_IDS: z.string().optional().default("WON"),
   GOOGLE_SHEET_CSV_URL: z.string().optional().default(""),
   GOOGLE_SHEET_ID: z.string().optional().default(""),
   GOOGLE_SHEET_GIDS: z.string().optional().default(""),
   CRM_PROVIDER: z.enum(["bitrix24", "none"]).default("none"),
+  /** Алерты РОПа в Telegram (webhook Bitrix + фоновые проверки). */
+  ROP_ALERTS_ENABLED: z
+    .string()
+    .optional()
+    .default("false")
+    .transform((v) => v === "1" || v.toLowerCase() === "true"),
+  ROP_ALERTS_TELEGRAM_BOT_TOKEN: z.string().optional().default(""),
+  /** ID чата или канала Telegram (можно несколько через запятую). */
+  ROP_ALERTS_TELEGRAM_CHAT_IDS: z.string().optional().default(""),
+  /** Публичный URL API для исходящего webhook Bitrix (без слэша в конце). */
+  PUBLIC_API_URL: z.string().optional().default(""),
+  /** Токен исходящего webhook Bitrix (auth.application_token). */
+  BITRIX24_OUTBOUND_TOKEN: z.string().optional().default(""),
+  /** Базовый URL портала для ссылок, напр. https://bb-wood.bitrix24.eu */
+  BITRIX24_PORTAL_URL: z.string().optional().default(""),
+  /** Мин. сумма лида для алерта; 0 = любой лид без ответа. */
+  ROP_ALERT_LEAD_MIN_EUR: z.coerce.number().default(0),
+  ROP_ALERT_LEAD_NO_RESPONSE_MINUTES: z.coerce.number().default(30),
+  ROP_ALERT_CHAT_NO_RESPONSE_MINUTES: z.coerce.number().default(30),
+  ROP_ALERT_INVOICE_MIN_EUR: z.coerce.number().default(1000),
+  ROP_ALERT_INVOICE_UNPAID_DAYS: z.coerce.number().default(2),
+  ROP_ALERT_VIP_LTV_MIN_EUR: z.coerce.number().default(1500),
+  /** Интервал фоновой проверки отложенных алертов, сек. */
+  ROP_ALERTS_POLL_INTERVAL_SEC: z.coerce.number().default(60),
 });
 
-export type AppConfig = z.infer<typeof envSchema>;
+export type AppConfig = Omit<
+  z.infer<typeof envSchema>,
+  "ANALYTICS_COUNTRY_TAGS" | "ANALYTICS_SALES_STAGE_IDS" | "ROP_ALERTS_TELEGRAM_CHAT_IDS"
+> & {
+  ANALYTICS_COUNTRY_TAGS: string[];
+  ANALYTICS_SALES_STAGE_IDS: string[];
+  ROP_ALERTS_TELEGRAM_CHAT_IDS: string[];
+};
 
 export function loadConfig(): AppConfig {
   const parsed = envSchema.safeParse(process.env);
@@ -25,9 +68,39 @@ export function loadConfig(): AppConfig {
     throw new Error("Invalid configuration");
   }
   const cfg = parsed.data;
+
+  const portalUrl =
+    cfg.BITRIX24_PORTAL_URL.trim() ||
+    (() => {
+      try {
+        return cfg.BITRIX24_WEBHOOK_URL ? new URL(cfg.BITRIX24_WEBHOOK_URL).origin : "";
+      } catch {
+        return "";
+      }
+    })();
+
+  const telegramBotToken = cfg.ROP_ALERTS_TELEGRAM_BOT_TOKEN.trim() || process.env.BOT_TOKEN?.trim() || "";
+  const telegramChatIds = cfg.ROP_ALERTS_TELEGRAM_CHAT_IDS.split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const adminTelegramIds = (process.env.ADMIN_TELEGRAM_IDS ?? "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) => /^-?\d+$/.test(id));
+  const mergedChatIds = telegramChatIds.length ? telegramChatIds : adminTelegramIds;
+
   return {
     ...cfg,
+    BITRIX24_PORTAL_URL: portalUrl,
+    ROP_ALERTS_TELEGRAM_BOT_TOKEN: telegramBotToken,
     CRM_PROVIDER: cfg.BITRIX24_WEBHOOK_URL ? "bitrix24" : "none",
+    ANALYTICS_COUNTRY_TAGS: cfg.ANALYTICS_COUNTRY_TAGS.split(",")
+      .map((tag) => tag.trim())
+      .filter(Boolean),
+    ANALYTICS_SALES_STAGE_IDS: cfg.ANALYTICS_SALES_STAGE_IDS.split(",")
+      .map((stage) => stage.trim())
+      .filter(Boolean),
+    ROP_ALERTS_TELEGRAM_CHAT_IDS: mergedChatIds,
   };
 }
 
