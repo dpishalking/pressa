@@ -102,7 +102,14 @@ CREATE TABLE IF NOT EXISTS rop_telegram_subscribers (
   chat_id TEXT PRIMARY KEY,
   username TEXT NOT NULL DEFAULT '',
   first_name TEXT NOT NULL DEFAULT '',
-  subscribed_at TEXT NOT NULL
+  subscribed_at TEXT NOT NULL,
+  active INTEGER NOT NULL DEFAULT 1,
+  paused_until TEXT,
+  notify_leads INTEGER NOT NULL DEFAULT 1,
+  notify_chats INTEGER NOT NULL DEFAULT 1,
+  notify_invoices INTEGER NOT NULL DEFAULT 1,
+  notify_lost_deals INTEGER NOT NULL DEFAULT 1,
+  notify_vip INTEGER NOT NULL DEFAULT 1
 );
 `;
 
@@ -120,6 +127,21 @@ export function getDb(): Database.Database {
     /* column exists */
   }
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_gifts_external_id ON gifts(external_id) WHERE external_id IS NOT NULL`);
+  for (const sql of [
+    `ALTER TABLE rop_telegram_subscribers ADD COLUMN active INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE rop_telegram_subscribers ADD COLUMN paused_until TEXT`,
+    `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_leads INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_chats INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_invoices INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_lost_deals INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_vip INTEGER NOT NULL DEFAULT 1`,
+  ]) {
+    try {
+      db.exec(sql);
+    } catch {
+      /* column exists */
+    }
+  }
   logger.info("Database initialized", { path: dbPath });
   return db;
 }

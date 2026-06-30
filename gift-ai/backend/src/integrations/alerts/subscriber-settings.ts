@@ -1,0 +1,125 @@
+import { getDb } from "../../db/client.js";
+import { getTelegramSubscriber } from "./telegram-subscribers.js";
+
+export type AlertTypeKey = "leads" | "chats" | "invoices" | "lost_deals" | "vip";
+
+export type SubscriberSettings = {
+  chatId: string;
+  active: boolean;
+  pausedUntil: string | null;
+  leads: boolean;
+  chats: boolean;
+  invoices: boolean;
+  lostDeals: boolean;
+  vip: boolean;
+};
+
+const DEFAULTS: Omit<SubscriberSettings, "chatId"> = {
+  active: true,
+  pausedUntil: null,
+  leads: true,
+  chats: true,
+  invoices: true,
+  lostDeals: true,
+  vip: true,
+};
+
+function rowToSettings(row: {
+  chat_id: string;
+  active: number;
+  paused_until: string | null;
+  notify_leads: number;
+  notify_chats: number;
+  notify_invoices: number;
+  notify_lost_deals: number;
+  notify_vip: number;
+}): SubscriberSettings {
+  return {
+    chatId: row.chat_id,
+    active: row.active !== 0,
+    pausedUntil: row.paused_until,
+    leads: row.notify_leads !== 0,
+    chats: row.notify_chats !== 0,
+    invoices: row.notify_invoices !== 0,
+    lostDeals: row.notify_lost_deals !== 0,
+    vip: row.notify_vip !== 0,
+  };
+}
+
+export function ensureSubscriberSettings(chatId: string): SubscriberSettings {
+  const db = getDb();
+  const existing = db
+    .prepare(
+      `SELECT chat_id, active, paused_until, notify_leads, notify_chats, notify_invoices, notify_lost_deals, notify_vip
+       FROM rop_telegram_subscribers WHERE chat_id = ?`,
+    )
+    .get(chatId) as
+    | {
+        chat_id: string;
+        active: number;
+        paused_until: string | null;
+        notify_leads: number;
+        notify_chats: number;
+        notify_invoices: number;
+        notify_lost_deals: number;
+        notify_vip: number;
+      }
+    | undefined;
+
+  if (existing) return rowToSettings(existing);
+
+  return { chatId, ...DEFAULTS };
+}
+
+export function getSubscriberSettings(chatId: string): SubscriberSettings {
+  return ensureSubscriberSettings(chatId);
+}
+
+export function setSubscriberActive(chatId: string, active: boolean): void {
+  const db = getDb();
+  db.prepare("UPDATE rop_telegram_subscribers SET active = ? WHERE chat_id = ?").run(active ? 1 : 0, chatId);
+}
+
+export function setSubscriberPause(chatId: string, until: string | null): void {
+  const db = getDb();
+  db.prepare("UPDATE rop_telegram_subscribers SET paused_until = ? WHERE chat_id = ?").run(until, chatId);
+}
+
+export function setSubscriberAlertToggle(chatId: string, key: AlertTypeKey, enabled: boolean): void {
+  const column = {
+    leads: "notify_leads",
+    chats: "notify_chats",
+    invoices: "notify_invoices",
+    lost_deals: "notify_lost_deals",
+    vip: "notify_vip",
+  }[key];
+
+  const db = getDb();
+  db.prepare(`UPDATE rop_telegram_subscribers SET ${column} = ? WHERE chat_id = ?`).run(enabled ? 1 : 0, chatId);
+}
+
+export function subscriberWantsAlert(chatId: string, alertType: AlertTypeKey): boolean {
+  const sub = getTelegramSubscriber(chatId);
+  if (!sub) return true;
+
+  const settings = getSubscriberSettings(chatId);
+  if (!settings.active) return false;
+  if (settings.pausedUntil && Date.parse(settings.pausedUntil) > Date.now()) return false;
+
+  switch (alertType) {
+    case "leads":
+      return settings.leads;
+    case "chats":
+      return settings.chats;
+    case "invoices":
+      return settings.invoices;
+    case "lost_deals":
+      return settings.lostDeals;
+    case "vip":
+      return settings.vip;
+  }
+}
+
+export function toggleLabel(on: boolean): string {
+  return on ? "вкл ✓" : "выкл";
+}

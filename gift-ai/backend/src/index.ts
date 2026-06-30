@@ -8,7 +8,7 @@ import { knowledgeBase } from "./modules/knowledge-base.js";
 import { logger } from "./logger.js";
 import { seedGifts } from "./seed.js";
 import { startRopAlertsWorker } from "./integrations/alerts/alert-worker.js";
-import { syncCsoBotWebhook } from "./integrations/alerts/cso-bot.js";
+import { syncCsoBotWebhook, syncCsoBotCommands } from "./integrations/alerts/cso-bot.js";
 
 getDb();
 seedGifts();
@@ -35,5 +35,6 @@ serve(
     });
     startRopAlertsWorker();
     void syncCsoBotWebhook();
+    void syncCsoBotCommands();
   },
 );

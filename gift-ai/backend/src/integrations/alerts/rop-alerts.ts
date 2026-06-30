@@ -237,6 +237,7 @@ async function fireLeadNoResponseAlert(leadId: string, cfg: RopAlertsConfig, pay
 
   const result = await sendTelegramAlert(cfg, lines.join("\n"), {
     relevantAt: lead.DATE_CREATE ?? new Date().toISOString(),
+    alertType: "leads",
   });
   if (shouldFinalizeAlert(result)) markAlertSent(alertKey, "lead_no_response");
 }
@@ -290,6 +291,7 @@ async function fireInvoiceUnpaidAlert(
 
   const result = await sendTelegramAlert(cfg, text, {
     relevantAt: invoice.createdTime ?? new Date().toISOString(),
+    alertType: "invoices",
   });
   if (shouldFinalizeAlert(result)) markAlertSent(alertKey, "invoice_unpaid");
 }
@@ -336,7 +338,7 @@ export async function fireLostDealAlert(dealId: string, cfg?: RopAlertsConfig): 
   lines.push("", "Нужно разобрать причину отказа.", "", "Открыть в Bitrix:", portalLink(settings, `/crm/deal/details/${dealId}/`));
 
   const relevantAt = deal.DATE_MODIFY ?? deal.CLOSEDATE ?? new Date().toISOString();
-  const result = await sendTelegramAlert(settings, lines.join("\n"), { relevantAt });
+  const result = await sendTelegramAlert(settings, lines.join("\n"), { relevantAt, alertType: "lost_deals" });
   if (shouldFinalizeAlert(result)) markAlertSent(alertKey, "lost_deal");
 }
 
@@ -400,7 +402,7 @@ async function fireChatNoResponseAlert(
     .filter(Boolean)
     .join("\n");
 
-  const result = await sendTelegramAlert(cfg, text, { relevantAt: lastClient.date });
+  const result = await sendTelegramAlert(cfg, text, { relevantAt: lastClient.date, alertType: "chats" });
   if (shouldFinalizeAlert(result)) markAlertSent(alertKey, "chat_no_response");
 }
 
@@ -453,7 +455,10 @@ export async function handleVipChatMessage(opts: {
     .filter(Boolean)
     .join("\n");
 
-  const result = await sendTelegramAlert(cfg, text, { relevantAt: new Date().toISOString() });
+  const result = await sendTelegramAlert(cfg, text, {
+    relevantAt: new Date().toISOString(),
+    alertType: "vip",
+  });
   if (!shouldFinalizeAlert(result)) return;
 
   markAlertSent(cooldownKey, "vip_chat");

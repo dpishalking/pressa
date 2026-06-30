@@ -2,6 +2,7 @@ import { logger } from "../../logger.js";
 import type { RopAlertsConfig } from "./alerts-config.js";
 import { isWithinRopAlertWindow } from "./alert-hours.js";
 import { getTelegramSubscriber } from "./telegram-subscribers.js";
+import { subscriberWantsAlert, type AlertTypeKey } from "./subscriber-settings.js";
 
 export type TelegramAlertSendResult = {
   delivered: boolean;
@@ -22,7 +23,7 @@ function isRelevantForSubscriber(chatId: string, relevantAt: string): boolean {
 export async function sendTelegramAlert(
   cfg: RopAlertsConfig,
   text: string,
-  opts?: { relevantAt?: string },
+  opts?: { relevantAt?: string; alertType?: AlertTypeKey },
 ): Promise<TelegramAlertSendResult> {
   if (!isWithinRopAlertWindow(cfg)) {
     logger.debug("ROP alert skipped outside Moscow hours", {
@@ -42,6 +43,7 @@ export async function sendTelegramAlert(
 
   for (const chatId of chatIds) {
     if (!isRelevantForSubscriber(chatId, relevantAt)) continue;
+    if (opts?.alertType && !subscriberWantsAlert(chatId, opts.alertType)) continue;
     eligible += 1;
 
     try {

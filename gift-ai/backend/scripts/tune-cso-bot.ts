@@ -48,9 +48,12 @@ async function main(): Promise<void> {
 
   await telegramApi("setMyCommands", {
     commands: [
-      { command: "start", description: "Подписаться на алерты РОПа" },
-      { command: "status", description: "Пороги и статус алертов" },
-      { command: "help", description: "Справка" },
+      { command: "start", description: "Подключиться к алертам" },
+      { command: "settings", description: "Ваши настройки уведомлений" },
+      { command: "help", description: "Список команд" },
+      { command: "status", description: "Пороги системы" },
+      { command: "pause", description: "Пауза до утра" },
+      { command: "stop", description: "Отписаться" },
     ],
   });
   await telegramApi("setMyDescription", {
