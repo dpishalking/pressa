@@ -41,6 +41,17 @@ function hoursAgoIso(hours: number): string {
   return new Date(Date.now() - hours * 3_600_000).toISOString();
 }
 
+function daysAgoIso(days: number): string {
+  return new Date(Date.now() - days * 86_400_000).toISOString();
+}
+
+function isWithinMaxAge(isoDate: string | undefined, maxAgeDays: number): boolean {
+  if (maxAgeDays <= 0 || !isoDate) return Boolean(isoDate);
+  const ts = Date.parse(isoDate);
+  if (!Number.isFinite(ts)) return false;
+  return Date.now() - ts <= maxAgeDays * 86_400_000;
+}
+
 function crmLinkForSession(cfg: RopAlertsConfig, session: OpenLineSession): string {
   const { ownerTypeId, ownerId, sessionId } = session;
   if (ownerTypeId === CRM_OWNER_LEAD && ownerId && ownerId !== "0") {
@@ -129,6 +140,8 @@ export async function scheduleLeadWatch(leadId: string, cfg?: RopAlertsConfig): 
   const lead = await getBitrixLeadById(leadId);
   if (!lead) return;
 
+  if (!isWithinMaxAge(lead.DATE_CREATE, settings.leadMaxAgeDays)) return;
+
   const amountEur = await leadAmountEur(lead, settings);
   if (settings.leadMinEur > 0 && amountEur < settings.leadMinEur) return;
 
@@ -201,6 +214,8 @@ async function fireLeadNoResponseAlert(leadId: string, cfg: RopAlertsConfig, pay
 
   const lead = await getBitrixLeadById(leadId);
   if (!lead) return;
+
+  if (!isWithinMaxAge(lead.DATE_CREATE, cfg.leadMaxAgeDays)) return;
 
   const amountEur = Number(payload.amountEur) || (await leadAmountEur(lead, cfg));
   const waitingMin = minutesBetween(lead.DATE_CREATE ?? "");
@@ -292,6 +307,7 @@ async function fireChatNoResponseAlert(
 
   const waitingMin = minutesBetween(lastClient.date);
   if (waitingMin < cfg.chatNoResponseMinutes) return;
+  if (!isWithinMaxAge(lastClient.date, cfg.chatMaxAgeDays)) return;
 
   const managerIds = await resolveBitrixUserNames([session.responsibleId]);
   const manager = managerIds.get(session.responsibleId) ?? (session.responsibleId || "не назначен");
@@ -415,11 +431,24 @@ export async function processDueWatches(cfg?: RopAlertsConfig): Promise<number> 
 
 export async function scanUnprocessedLeads(cfg?: RopAlertsConfig): Promise<void> {
   const settings = cfg ?? ropAlertsConfig();
-  const cutoff = hoursAgoIso(settings.leadNoResponseMinutes / 60);
-  const leads = await listBitrixLeads(
-    { STATUS_SEMANTIC_ID: "P", "<DATE_CREATE": cutoff },
-    ["OPPORTUNITY", "CURRENCY_ID", "ASSIGNED_BY_ID", "DATE_CREATE", "TITLE", "NAME", "LAST_NAME"],
-  );
+  const staleCutoff = hoursAgoIso(settings.leadNoResponseMinutes / 60);
+  const filter: Record<string, unknown> = {
+    STATUS_SEMANTIC_ID: "P",
+    "<DATE_CREATE": staleCutoff,
+  };
+  if (settings.leadMaxAgeDays > 0) {
+    filter[">=DATE_CREATE"] = daysAgoIso(settings.leadMaxAgeDays);
+  }
+
+  const leads = await listBitrixLeads(filter, [
+    "OPPORTUNITY",
+    "CURRENCY_ID",
+    "ASSIGNED_BY_ID",
+    "DATE_CREATE",
+    "TITLE",
+    "NAME",
+    "LAST_NAME",
+  ]);
 
   for (const lead of leads) {
     const amountEur = await leadAmountEur(lead, settings);
@@ -471,6 +500,11 @@ export async function handleBitrixWebhook(payload: BitrixWebhookPayload): Promis
 
     const lead = await getBitrixLeadById(leadId);
     if (!lead) return { ok: true };
+
+    if (!isWithinMaxAge(lead.DATE_CREATE, cfg.leadMaxAgeDays)) {
+      cancelWatch("lead_no_response", leadId);
+      return { ok: true, handled: "lead_stale" };
+    }
 
     const unprocessed = await isLeadUnprocessed(leadId);
     if (unprocessed) {
