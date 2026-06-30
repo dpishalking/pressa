@@ -31,7 +31,8 @@ import {
   type BitrixWebhookPayload,
 } from "./bitrix-webhook-parse.js";
 import { getContactLtvEur } from "./contact-ltv.js";
-import { eur, portalLink, sendTelegramAlert } from "./telegram-notify.js";
+import { eur, portalLink, sendTelegramAlert, shouldFinalizeAlert } from "./telegram-notify.js";
+import { isWithinRopAlertWindow } from "./alert-hours.js";
 
 const CRM_OWNER_CONTACT = "3";
 const CRM_OWNER_LEAD = "1";
@@ -232,8 +233,10 @@ async function fireLeadNoResponseAlert(leadId: string, cfg: RopAlertsConfig, pay
   if (amountEur > 0) lines.splice(3, 0, `Сумма: ${eur(amountEur)}`);
   lines.push("", "Открыть в Bitrix:", portalLink(cfg, `/crm/lead/details/${leadId}/`));
 
-  const sent = await sendTelegramAlert(cfg, lines.join("\n"));
-  if (sent) markAlertSent(alertKey, "lead_no_response");
+  const result = await sendTelegramAlert(cfg, lines.join("\n"), {
+    relevantAt: lead.DATE_CREATE ?? new Date().toISOString(),
+  });
+  if (shouldFinalizeAlert(result)) markAlertSent(alertKey, "lead_no_response");
 }
 
 async function fireInvoiceUnpaidAlert(
@@ -281,8 +284,10 @@ async function fireInvoiceUnpaidAlert(
     .filter(Boolean)
     .join("\n");
 
-  const sent = await sendTelegramAlert(cfg, text);
-  if (sent) markAlertSent(alertKey, "invoice_unpaid");
+  const result = await sendTelegramAlert(cfg, text, {
+    relevantAt: invoice.createdTime ?? new Date().toISOString(),
+  });
+  if (shouldFinalizeAlert(result)) markAlertSent(alertKey, "invoice_unpaid");
 }
 
 async function fireChatNoResponseAlert(
@@ -328,8 +333,8 @@ async function fireChatNoResponseAlert(
     .filter(Boolean)
     .join("\n");
 
-  const sent = await sendTelegramAlert(cfg, text);
-  if (sent) markAlertSent(alertKey, "chat_no_response");
+  const result = await sendTelegramAlert(cfg, text, { relevantAt: lastClient.date });
+  if (shouldFinalizeAlert(result)) markAlertSent(alertKey, "chat_no_response");
 }
 
 function clearChatAlert(sessionId: string): void {
@@ -381,8 +386,8 @@ export async function handleVipChatMessage(opts: {
     .filter(Boolean)
     .join("\n");
 
-  const sent = await sendTelegramAlert(cfg, text);
-  if (!sent) return;
+  const result = await sendTelegramAlert(cfg, text, { relevantAt: new Date().toISOString() });
+  if (!shouldFinalizeAlert(result)) return;
 
   markAlertSent(cooldownKey, "vip_chat");
   scheduleVipCooldownReset(cooldownKey);
@@ -405,6 +410,8 @@ function scheduleVipCooldownReset(alertKey: string): void {
 
 export async function processDueWatches(cfg?: RopAlertsConfig): Promise<number> {
   const settings = cfg ?? ropAlertsConfig();
+  if (!isWithinRopAlertWindow(settings)) return 0;
+
   const due = listDueWatches();
   let fired = 0;
 
@@ -433,6 +440,8 @@ export async function processDueWatches(cfg?: RopAlertsConfig): Promise<number> 
 
 export async function scanUnprocessedLeads(cfg?: RopAlertsConfig): Promise<void> {
   const settings = cfg ?? ropAlertsConfig();
+  if (!isWithinRopAlertWindow(settings)) return;
+
   const staleCutoff = hoursAgoIso(settings.leadNoResponseMinutes / 60);
   const filter: Record<string, unknown> = {
     STATUS_SEMANTIC_ID: "P",
@@ -464,6 +473,8 @@ export async function scanUnprocessedLeads(cfg?: RopAlertsConfig): Promise<void>
 
 export async function scanUnpaidInvoices(cfg?: RopAlertsConfig): Promise<void> {
   const settings = cfg ?? ropAlertsConfig();
+  if (!isWithinRopAlertWindow(settings)) return;
+
   const converter = await fx(settings);
   const invoices = await listUnpaidInvoices();
 

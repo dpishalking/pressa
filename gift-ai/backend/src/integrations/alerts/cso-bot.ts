@@ -69,7 +69,8 @@ export async function handleCsoBotUpdate(update: TelegramUpdate): Promise<void> 
       [
         "✅ Вы подписаны на алерты РОПа",
         "",
-        "Бот @rpcs0_bot будет присылать срочные сигналы из Bitrix24.",
+        "С этого момента — только новые сигналы.",
+        "Старые лиды и чаты не придут.",
         "",
         helpText(),
       ].join("\n"),
