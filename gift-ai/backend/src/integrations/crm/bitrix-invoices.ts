@@ -15,6 +15,18 @@ export const INVOICE_STAGE_LOST = "DT31_2:D";
 /** @deprecated используйте INVOICE_STAGE_LOST */
 export const INVOICE_STAGE_UNPAID = INVOICE_STAGE_LOST;
 
+/** Сделка на стадии «Выставление счета» — ждём оплату, следующий шаг ещё не начат. */
+export const INVOICE_PENDING_DEAL_STAGE_ID = "1";
+
+export function isInvoiceAwaitingPayment(deal?: {
+  STAGE_ID?: string;
+  STAGE_SEMANTIC_ID?: string;
+} | null): boolean {
+  if (!deal) return false;
+  if (deal.STAGE_SEMANTIC_ID === "S" || deal.STAGE_SEMANTIC_ID === "F") return false;
+  return deal.STAGE_ID === INVOICE_PENDING_DEAL_STAGE_ID;
+}
+
 export type InvoiceDateRange = {
   from: string;
   to: string;

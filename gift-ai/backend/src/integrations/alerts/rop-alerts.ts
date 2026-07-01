@@ -10,6 +10,7 @@ import {
 import {
   getBitrixInvoiceById,
   INVOICE_STAGE_SENT,
+  isInvoiceAwaitingPayment,
   listSentInvoices,
   SMART_INVOICE_ENTITY_TYPE_ID,
 } from "../crm/bitrix-invoices.js";
@@ -269,6 +270,7 @@ async function fireInvoiceUnpaidAlert(
 
   if (invoice.parentDealId) {
     const deal = await getBitrixDealById(invoice.parentDealId);
+    if (!isInvoiceAwaitingPayment(deal)) return;
     if (deal) {
       clientName = deal.TITLE ?? clientName;
       const names = await resolveBitrixUserNames([String(deal.ASSIGNED_BY_ID ?? "")]);

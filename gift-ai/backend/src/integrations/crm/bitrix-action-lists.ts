@@ -11,7 +11,7 @@ import {
   type BitrixDeal,
   type BitrixLead,
 } from "./bitrix-client.js";
-import { listSentInvoices, type BitrixInvoice } from "./bitrix-invoices.js";
+import { listSentInvoices, isInvoiceAwaitingPayment, type BitrixInvoice } from "./bitrix-invoices.js";
 import { fetchSessionChat, listOpenLineSessions } from "./bitrix-openlines.js";
 import type { ActionsExportConfig } from "../analytics/actions-config.js";
 import type { ExportDateRange } from "../analytics/bitrix-country-export.js";
@@ -175,7 +175,7 @@ async function loadDealsByIds(dealIds: number[]): Promise<Map<number, BitrixDeal
   const unique = [...new Set(dealIds.filter(Boolean))];
   for (let i = 0; i < unique.length; i += 50) {
     const chunk = unique.slice(i, i + 50);
-    const deals = await listBitrixDeals({ "@ID": chunk.map(String) }, ["CONTACT_ID"]);
+    const deals = await listBitrixDeals({ "@ID": chunk.map(String) }, ["CONTACT_ID", "STAGE_ID", "STAGE_SEMANTIC_ID"]);
     for (const deal of deals) {
       map.set(Number(deal.ID), deal);
     }
@@ -198,6 +198,8 @@ async function buildUnpaidInvoices(
   for (const invoice of invoices) {
     if (!invoice.parentDealId) continue;
     const deal = deals.get(invoice.parentDealId);
+    if (!isInvoiceAwaitingPayment(deal)) continue;
+
     const contactId = String(deal?.CONTACT_ID ?? "");
     const contact = contactId ? contacts.get(contactId) : undefined;
     const createdDate = (invoice.createdTime ?? "").slice(0, 10);
