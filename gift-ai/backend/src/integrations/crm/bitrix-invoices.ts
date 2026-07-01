@@ -6,8 +6,14 @@ import {
 } from "./bitrix-client.js";
 
 export const SMART_INVOICE_ENTITY_TYPE_ID = 31;
+/** Оплачено — победа. */
 export const INVOICE_STAGE_PAID = "DT31_2:P";
-export const INVOICE_STAGE_UNPAID = "DT31_2:D";
+/** Отправлено клиенту — ждём оплату. */
+export const INVOICE_STAGE_SENT = "DT31_2:S";
+/** Не оплачено — проигрыш, в отчёты не включаем. */
+export const INVOICE_STAGE_LOST = "DT31_2:D";
+/** @deprecated используйте INVOICE_STAGE_LOST */
+export const INVOICE_STAGE_UNPAID = INVOICE_STAGE_LOST;
 
 export type InvoiceDateRange = {
   from: string;
@@ -80,14 +86,21 @@ export async function listInvoicesCreatedInRange(range: InvoiceDateRange): Promi
   return items;
 }
 
-export async function listUnpaidInvoices(): Promise<BitrixInvoice[]> {
+/** Счета на стадии «Отправлено клиенту», опционально старше minDaysSinceCreated дней. */
+export async function listSentInvoices(minDaysSinceCreated = 0): Promise<BitrixInvoice[]> {
+  const filter: Record<string, unknown> = { stageId: INVOICE_STAGE_SENT };
+  if (minDaysSinceCreated > 0) {
+    const cutoff = new Date(Date.now() - minDaysSinceCreated * 86_400_000).toISOString();
+    filter["<createdTime"] = cutoff;
+  }
+
   const items: BitrixInvoice[] = [];
   let start = 0;
 
   while (true) {
     const response = await bitrixCall("crm.item.list", {
       entityTypeId: SMART_INVOICE_ENTITY_TYPE_ID,
-      filter: { stageId: INVOICE_STAGE_UNPAID },
+      filter,
       select: ["id", "title", "stageId", "opportunity", "currencyId", "parentId2", "createdTime"],
       order: { createdTime: "ASC" },
       start,
@@ -113,6 +126,11 @@ export async function listUnpaidInvoices(): Promise<BitrixInvoice[]> {
   }
 
   return items;
+}
+
+/** @deprecated используйте listSentInvoices */
+export async function listUnpaidInvoices(): Promise<BitrixInvoice[]> {
+  return listSentInvoices(0);
 }
 
 export async function getBitrixInvoiceById(id: number): Promise<BitrixInvoice | null> {
@@ -199,7 +217,7 @@ export async function buildInvoiceBucketsByCountry(opts: {
     bucket.invoicesCount += 1;
     bucket.invoicesAmount += amountEur;
 
-    if (invoice.stageId === INVOICE_STAGE_UNPAID) {
+    if (invoice.stageId === INVOICE_STAGE_LOST) {
       bucket.cancelledCount += 1;
       bucket.cancelledAmount += amountEur;
     }

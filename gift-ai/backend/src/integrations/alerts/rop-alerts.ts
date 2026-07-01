@@ -9,8 +9,8 @@ import {
 } from "../crm/bitrix-client.js";
 import {
   getBitrixInvoiceById,
-  INVOICE_STAGE_UNPAID,
-  listUnpaidInvoices,
+  INVOICE_STAGE_SENT,
+  listSentInvoices,
   SMART_INVOICE_ENTITY_TYPE_ID,
 } from "../crm/bitrix-invoices.js";
 import { findOpenLineSessionBySessionId, fetchSessionChat, type OpenLineSession } from "../crm/bitrix-openlines.js";
@@ -25,6 +25,7 @@ import {
   markAlertSent,
   upsertWatch,
   wasAlertSent,
+  allEligibleChatsDelivered,
 } from "./alert-store.js";
 import {
   extractDynamicItem,
@@ -34,6 +35,7 @@ import {
 } from "./bitrix-webhook-parse.js";
 import { getContactLtvEur } from "./contact-ltv.js";
 import { eur, portalLink, sendTelegramAlert, shouldFinalizeAlert } from "./telegram-notify.js";
+import { subscriberWantsAlert } from "./subscriber-settings.js";
 import { isWithinRopAlertWindow } from "./alert-hours.js";
 
 const CRM_OWNER_CONTACT = "3";
@@ -189,7 +191,7 @@ export async function scheduleChatWatch(
 export async function scheduleInvoiceWatch(invoiceId: string, cfg?: RopAlertsConfig): Promise<void> {
   const settings = cfg ?? ropAlertsConfig();
   const invoice = await getBitrixInvoiceById(Number.parseInt(invoiceId, 10));
-  if (!invoice || invoice.stageId !== INVOICE_STAGE_UNPAID) return;
+  if (!invoice || invoice.stageId !== INVOICE_STAGE_SENT) return;
 
   const converter = await fx(settings);
   const amountEur = converter.convert(invoice.opportunity ?? 0, invoice.currencyId);
@@ -210,7 +212,8 @@ export async function scheduleInvoiceWatch(invoiceId: string, cfg?: RopAlertsCon
 
 async function fireLeadNoResponseAlert(leadId: string, cfg: RopAlertsConfig, payload: Record<string, unknown>): Promise<void> {
   const alertKey = `lead_no_response:${leadId}`;
-  if (wasAlertSent(alertKey)) return;
+  const eligible = cfg.telegramChatIds.filter((chatId) => subscriberWantsAlert(chatId, "leads"));
+  if (allEligibleChatsDelivered(alertKey, eligible)) return;
 
   const stillOpen = await isLeadUnprocessed(leadId);
   if (!stillOpen) return;
@@ -235,11 +238,11 @@ async function fireLeadNoResponseAlert(leadId: string, cfg: RopAlertsConfig, pay
   if (amountEur > 0) lines.splice(3, 0, `Сумма: ${eur(amountEur)}`);
   lines.push("", "Открыть в Bitrix:", portalLink(cfg, `/crm/lead/details/${leadId}/`));
 
-  const result = await sendTelegramAlert(cfg, lines.join("\n"), {
-    relevantAt: lead.DATE_CREATE ?? new Date().toISOString(),
+  await sendTelegramAlert(cfg, lines.join("\n"), {
+    alertKey,
     alertType: "leads",
+    ignoreSubscribedAt: true,
   });
-  if (shouldFinalizeAlert(result)) markAlertSent(alertKey, "lead_no_response");
 }
 
 async function fireInvoiceUnpaidAlert(
@@ -251,7 +254,7 @@ async function fireInvoiceUnpaidAlert(
   if (wasAlertSent(alertKey)) return;
 
   const invoice = await getBitrixInvoiceById(Number.parseInt(invoiceId, 10));
-  if (!invoice || invoice.stageId !== INVOICE_STAGE_UNPAID) return;
+  if (!invoice || invoice.stageId !== INVOICE_STAGE_SENT) return;
 
   const converter = await fx(cfg);
   const amountEur = Number(payload.amountEur) || converter.convert(invoice.opportunity ?? 0, invoice.currencyId);
@@ -548,7 +551,7 @@ export async function scanUnpaidInvoices(cfg?: RopAlertsConfig): Promise<void> {
   if (!isWithinRopAlertWindow(settings)) return;
 
   const converter = await fx(settings);
-  const invoices = await listUnpaidInvoices();
+  const invoices = await listSentInvoices(0);
 
   for (const invoice of invoices) {
     const amountEur = converter.convert(invoice.opportunity ?? 0, invoice.currencyId);
@@ -618,7 +621,7 @@ export async function handleBitrixWebhook(payload: BitrixWebhookPayload): Promis
     const item = extractDynamicItem(payload.data);
     if (item.entityTypeId === SMART_INVOICE_ENTITY_TYPE_ID && item.id) {
       const invoice = await getBitrixInvoiceById(Number.parseInt(item.id, 10));
-      if (invoice?.stageId === INVOICE_STAGE_UNPAID) {
+      if (invoice?.stageId === INVOICE_STAGE_SENT) {
         await scheduleInvoiceWatch(item.id, cfg);
       } else {
         cancelWatch("invoice_unpaid", item.id);
