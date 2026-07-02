@@ -1,5 +1,14 @@
-import { buildActionLists, DEFAULT_THRESHOLDS, type ActionListsResult, type ThinkDealRow } from "../crm/bitrix-action-lists.js";
-import { lostDialogueSheetRows } from "../crm/lost-dialogue-sheet.js";
+import { buildActionLists, DEFAULT_THRESHOLDS, type ActionListsResult } from "../crm/bitrix-action-lists.js";
+import {
+  dealInDialogueSheetRows,
+  leadInWorkSheetRows,
+  lostDialogueSheetRows,
+  slowResponseSheetRows,
+  staleDealSheetRows,
+  thinkDealSheetRows,
+  unpaidInvoiceSheetRows,
+  unprocessedLeadSheetRows,
+} from "../crm/action-sheet-rows.js";
 import { actionsExportConfig } from "./actions-config.js";
 import {
   ACTIONS_SUMMARY_HEADERS,
@@ -14,7 +23,7 @@ import {
   actionsSummaryTab,
   lostDialoguesTab,
   thinkDealsTab,
-  thinkDealsExpiredTab,
+  deleteSheetTabs,
   slowResponsesTab,
   staleDealsTab,
   unprocessedLeadsTab,
@@ -23,9 +32,7 @@ import {
   unpaidInvoicesTab,
   sheetAmount,
   sheetPct,
-  sheetText,
   writeSheetContent,
-  writeSheetDataOnly,
   type SheetCell,
 } from "../sheets/analytics-write.js";
 import { loadServiceAccount } from "../sheets/google-auth.js";
@@ -44,8 +51,8 @@ function summaryRows(result: ActionListsResult, baseCurrency: string): SheetCell
     ["Обновлено", s.updatedAt],
     ["Неоплаченных счетов", s.unpaidInvoicesCount],
     ["Сумма неоплаченных счетов", sheetAmount(s.unpaidInvoicesEur)],
-    ["Зависших сделок", s.staleDealsCount],
-    ["Сумма зависших сделок", sheetAmount(s.staleDealsEur)],
+    [`Клиент не ответил (>${DEFAULT_THRESHOLDS.clientNoReplyMinHours}ч)`, s.staleDealsCount],
+    ["Сумма (сделки без ответа)", sheetAmount(s.staleDealsEur)],
     ["Потерянных диалогов", s.unansweredChatsCount],
     [`«Я подумаю» (до ${thinkDays} дн)`, s.thinkDealsCount],
     ["Сумма «Я подумаю»", sheetAmount(s.thinkDealsEur)],
@@ -62,37 +69,6 @@ function summaryRows(result: ActionListsResult, baseCurrency: string): SheetCell
     ["Конверсия лид→сделка вчера, %", sheetPct(s.yesterdayConversionPct)],
     ["Валюта", baseCurrency],
   ];
-}
-
-function thinkIssueLabel(issue: ThinkDealRow["issue"], closeDate: string, today: string): string {
-  const thinkDays = DEFAULT_THRESHOLDS.thinkDealMaxOverdueDays;
-  if (issue === "no_task") {
-    return closeDate && closeDate >= today ? "Нет дела (есть дата в CRM)" : "Нет дела";
-  }
-  if (issue === "expired") return `Закрыть (>${thinkDays} дн)`;
-  return "Просрочен контакт";
-}
-
-function thinkDealRows(rows: ThinkDealRow[], baseCurrency: string): SheetCell[][] {
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: process.env.STATS_TIMEZONE ?? "Europe/Moscow",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-
-  return rows.map((row) => [
-    row.dealId,
-    sheetText(row.title),
-    sheetAmount(row.amountEur),
-    baseCurrency,
-    row.nextContactDate || "—",
-    row.taskDeadline || "—",
-    row.daysOverdue,
-    thinkIssueLabel(row.issue, row.nextContactDate, today),
-    sheetText(row.managerName),
-    sheetText(row.phone),
-  ]);
 }
 
 export async function exportBitrixActionLists(): Promise<BitrixActionsExportSummary> {
@@ -113,7 +89,6 @@ export async function exportBitrixActionLists(): Promise<BitrixActionsExportSumm
     unpaidInvoicesTab(),
     lostDialoguesTab(),
     thinkDealsTab(),
-    thinkDealsExpiredTab(),
     staleDealsTab(),
     unprocessedLeadsTab(),
     leadsInWorkTab(),
@@ -134,17 +109,7 @@ export async function exportBitrixActionLists(): Promise<BitrixActionsExportSumm
     cfg.sheetId,
     tabs[1]!,
     UNPAID_INVOICE_HEADERS,
-    result.unpaidInvoices.map((row) => [
-      row.invoiceId,
-      row.dealId,
-      sheetText(row.clientName),
-      sheetAmount(row.amountEur),
-      cfg.baseCurrency,
-      row.createdDate,
-      row.daysUnpaid,
-      sheetText(row.managerName),
-      sheetText(row.phone),
-    ]),
+    unpaidInvoiceSheetRows(result.unpaidInvoices, cfg.baseCurrency),
   );
 
   await writeSheetContent(
@@ -155,106 +120,58 @@ export async function exportBitrixActionLists(): Promise<BitrixActionsExportSumm
     lostDialogueSheetRows(result.unansweredChats),
   );
 
-  await writeSheetDataOnly(
+  await writeSheetContent(
     account,
     cfg.sheetId,
     tabs[3]!,
-    THINK_DEAL_HEADERS.length,
-    thinkDealRows(result.thinkDeals, cfg.baseCurrency),
+    THINK_DEAL_HEADERS,
+    thinkDealSheetRows(result.thinkDeals, cfg.baseCurrency),
   );
 
-  await writeSheetDataOnly(
+  await writeSheetContent(
     account,
     cfg.sheetId,
     tabs[4]!,
-    THINK_DEAL_HEADERS.length,
-    thinkDealRows(result.thinkDealsExpired, cfg.baseCurrency),
+    STALE_DEAL_HEADERS,
+    staleDealSheetRows(result.staleDeals, cfg.baseCurrency),
   );
 
   await writeSheetContent(
     account,
     cfg.sheetId,
     tabs[5]!,
-    STALE_DEAL_HEADERS,
-    result.staleDeals.map((row) => [
-      row.dealId,
-      sheetText(row.title),
-      sheetText(row.stageName),
-      sheetAmount(row.amountEur),
-      cfg.baseCurrency,
-      row.daysStale,
-      sheetText(row.managerName),
-      sheetText(row.phone),
-    ]),
+    UNPROCESSED_LEAD_HEADERS,
+    unprocessedLeadSheetRows(result.unprocessedLeads),
   );
 
   await writeSheetContent(
     account,
     cfg.sheetId,
     tabs[6]!,
-    UNPROCESSED_LEAD_HEADERS,
-    result.unprocessedLeads.map((row) => [
-      row.leadId,
-      sheetText(row.title),
-      sheetText(row.sourceName),
-      sheetText(row.country),
-      row.createdAt,
-      sheetText(row.stageName),
-      row.hoursWaiting,
-      sheetText(row.managerName),
-      sheetText(row.phone),
-    ]),
+    LEAD_IN_WORK_HEADERS,
+    leadInWorkSheetRows(result.leadsInWorkStale),
   );
 
   await writeSheetContent(
     account,
     cfg.sheetId,
     tabs[7]!,
-    LEAD_IN_WORK_HEADERS,
-    result.leadsInWorkStale.map((row) => [
-      row.leadId,
-      sheetText(row.title),
-      sheetText(row.sourceName),
-      sheetText(row.country),
-      row.inWorkSince,
-      row.hoursInWork,
-      sheetText(row.managerName),
-      sheetText(row.phone),
-    ]),
+    DEAL_IN_DIALOGUE_HEADERS,
+    dealInDialogueSheetRows(result.dealsInDialogueStale, cfg.baseCurrency),
   );
 
   await writeSheetContent(
     account,
     cfg.sheetId,
     tabs[8]!,
-    DEAL_IN_DIALOGUE_HEADERS,
-    result.dealsInDialogueStale.map((row) => [
-      row.dealId,
-      sheetText(row.title),
-      sheetAmount(row.amountEur),
-      cfg.baseCurrency,
-      sheetText(row.channel),
-      sheetText(row.clientLabel),
-      row.waitingHours,
-      sheetText(row.lastClientMessage),
-      sheetText(row.managerName),
-      sheetText(row.phone),
-    ]),
+    SLOW_RESPONSE_HEADERS,
+    slowResponseSheetRows(result.slowResponses),
   );
 
-  await writeSheetContent(
-    account,
-    cfg.sheetId,
-    tabs[9]!,
-    SLOW_RESPONSE_HEADERS,
-    result.slowResponses.map((row) => [
-      row.sessionId,
-      row.channel,
-      sheetText(row.managerName),
-      row.firstResponseMinutes,
-      row.sessionDate,
-    ]),
-  );
+  const removedTabs = await deleteSheetTabs(account, cfg.sheetId, ["Я подумаю", "Я подумаю закрыть", "Зависшие сделки"]);
+  if (removedTabs.length) {
+    logger.info("Removed legacy think-deal tabs", { removedTabs });
+  }
 
   logger.info("Actions export written", {
     sheetId: cfg.sheetId,

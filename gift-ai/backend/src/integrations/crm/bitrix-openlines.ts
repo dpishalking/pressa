@@ -33,6 +33,8 @@ export type SessionChatStats = {
   systemCount: number;
   firstClientAt?: string;
   firstResponseMinutes?: number;
+  /** Комментарий к посту в Instagram, а не Direct-сообщение. */
+  instagramPostComment: boolean;
 };
 
 function sleep(ms: number): Promise<void> {
@@ -372,7 +374,23 @@ function minutesBetween(fromIso: string, toIso: string): number | undefined {
   return Math.round((to - from) / 60_000);
 }
 
-export function summarizeSessionChat(session: OpenLineSession, messages: ParsedChatMessage[]): SessionChatStats {
+function detectInstagramPostComment(raw: Record<string, unknown>): boolean {
+  const bucket = raw.message as Record<string, Record<string, unknown>> | undefined;
+  if (!bucket) return false;
+
+  for (const msg of Object.values(bucket)) {
+    const text = String(msg.text ?? msg.textlegacy ?? "").toLowerCase();
+    if (/comment to instagram post|left comment to instagram/i.test(text)) return true;
+    if (/комментар/i.test(text) && /instagram|инстаграм/i.test(text)) return true;
+  }
+  return false;
+}
+
+function summarizeSessionChatInner(
+  session: OpenLineSession,
+  messages: ParsedChatMessage[],
+  instagramPostComment: boolean,
+): SessionChatStats {
   const clientMessages = messages.filter((m) => m.author === "client" && m.text);
   const managerMessages = messages.filter((m) => m.author === "manager" && m.text);
   const systemCount = messages.filter((m) => m.author === "system").length;
@@ -394,15 +412,21 @@ export function summarizeSessionChat(session: OpenLineSession, messages: ParsedC
       firstClient && firstManagerAfterClient
         ? minutesBetween(firstClient.date, firstManagerAfterClient.date)
         : undefined,
+    instagramPostComment,
   };
+}
+
+export function summarizeSessionChat(session: OpenLineSession, messages: ParsedChatMessage[]): SessionChatStats {
+  return summarizeSessionChatInner(session, messages, false);
 }
 
 export async function fetchSessionChat(session: OpenLineSession): Promise<SessionChatStats> {
   const response = await bitrixCall("imopenlines.session.history.get", {
     SESSION_ID: session.sessionId,
   });
-  const messages = parseHistoryMessages((response.result as Record<string, unknown>) ?? {}, session.responsibleId);
-  return summarizeSessionChat(session, messages);
+  const rawResult = (response.result as Record<string, unknown>) ?? {};
+  const messages = parseHistoryMessages(rawResult, session.responsibleId);
+  return summarizeSessionChatInner(session, messages, detectInstagramPostComment(rawResult));
 }
 
 export async function collectSessionChats(opts: {

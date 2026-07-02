@@ -35,11 +35,12 @@ export async function sendTelegramAlert(
     alertType?: AlertTypeKey;
     /** Уникальный ключ события — доставка отслеживается отдельно по каждому chat_id. */
     alertKey?: string;
-    /** Не отсекать подписчиков, подключившихся после события (для лидов). */
+    /** Отправлять вне окна дневных алертов (например, оплаты). */
+    ignoreAlertWindow?: boolean;
     ignoreSubscribedAt?: boolean;
   },
 ): Promise<TelegramAlertSendResult> {
-  if (!isWithinRopAlertWindow(cfg)) {
+  if (!opts?.ignoreAlertWindow && !isWithinRopAlertWindow(cfg)) {
     logger.debug("ROP alert skipped outside Moscow hours", {
       from: cfg.alertFromHour,
       to: cfg.alertToHour,

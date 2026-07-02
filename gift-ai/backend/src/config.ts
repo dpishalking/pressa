@@ -67,6 +67,10 @@ const envSchema = z.object({
     .transform((v) => v === "1" || v.toLowerCase() === "true"),
   /** Час отправки дайджеста по Москве (0–23). */
   ROP_ALERT_DAILY_DIGEST_HOUR_MSK: z.coerce.number().min(0).max(23).default(22),
+  /** CORS origin для dashboard SPA, напр. http://203.0.113.5:8080 */
+  DASHBOARD_ORIGIN: z.string().optional().default(""),
+  /** Путь к собранному dashboard dist для serveStatic (опционально). */
+  DASHBOARD_DIST_PATH: z.string().optional().default(""),
 });
 
 export type AppConfig = Omit<

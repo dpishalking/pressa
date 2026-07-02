@@ -1,16 +1,14 @@
-import { listBitrixDeals } from "./bitrix-client.js";
-import { resolveBitrixUserNames } from "./bitrix-client.js";
-import { DEFAULT_THRESHOLDS, buildThinkDeals, THINK_DEAL_STAGE_ID, type ThinkDealRow } from "./bitrix-action-lists.js";
+import { listBitrixDeals, resolveBitrixUserNames } from "./bitrix-client.js";
+import {
+  DEFAULT_THRESHOLDS,
+  buildThinkDeals,
+  enrichThinkDealPhones,
+  THINK_DEAL_STAGE_ID,
+} from "./bitrix-action-lists.js";
 import type { ActionsExportConfig } from "../analytics/actions-config.js";
 import { loadFxConverter } from "../analytics/fx-rates.js";
-import {
-  THINK_DEAL_HEADERS,
-  thinkDealsExpiredTab,
-  thinkDealsTab,
-  sheetAmount,
-  sheetText,
-  writeSheetDataOnly,
-} from "../sheets/analytics-write.js";
+import { THINK_DEAL_HEADERS, deleteSheetTabs, thinkDealsTab, writeSheetContent } from "../sheets/analytics-write.js";
+import { thinkDealSheetRows } from "./action-sheet-rows.js";
 import type { GoogleServiceAccount } from "../sheets/google-auth.js";
 
 function formatToday(): string {
@@ -20,31 +18,6 @@ function formatToday(): string {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
-}
-
-function thinkIssueLabel(issue: ThinkDealRow["issue"], closeDate: string, today: string): string {
-  const thinkDays = DEFAULT_THRESHOLDS.thinkDealMaxOverdueDays;
-  if (issue === "no_task") {
-    return closeDate && closeDate >= today ? "Нет дела (есть дата в CRM)" : "Нет дела";
-  }
-  if (issue === "expired") return `Закрыть (>${thinkDays} дн)`;
-  return "Просрочен контакт";
-}
-
-function thinkRows(rows: ThinkDealRow[], baseCurrency: string): (string | number)[][] {
-  const today = formatToday();
-  return rows.map((row) => [
-    row.dealId,
-    sheetText(row.title),
-    sheetAmount(row.amountEur),
-    baseCurrency,
-    row.nextContactDate || "—",
-    row.taskDeadline || "—",
-    row.daysOverdue,
-    thinkIssueLabel(row.issue, row.nextContactDate, today),
-    sheetText(row.managerName),
-    sheetText(row.phone),
-  ]);
 }
 
 export async function buildThinkDealsDirect(
@@ -73,25 +46,21 @@ export async function buildThinkDealsDirect(
     ),
   ];
   const managerNames = await resolveBitrixUserNames(managerIds);
-  for (const row of [...active, ...expired]) {
+  for (const row of active) {
     row.managerName = managerNames.get(row.managerName) ?? row.managerName;
   }
 
-  await writeSheetDataOnly(
+  await enrichThinkDealPhones(active);
+
+  await writeSheetContent(
     account,
     cfg.sheetId,
     thinkDealsTab(),
-    THINK_DEAL_HEADERS.length,
-    thinkRows(active, cfg.baseCurrency),
+    THINK_DEAL_HEADERS,
+    thinkDealSheetRows(active, cfg.baseCurrency),
   );
 
-  await writeSheetDataOnly(
-    account,
-    cfg.sheetId,
-    thinkDealsExpiredTab(),
-    THINK_DEAL_HEADERS.length,
-    thinkRows(expired, cfg.baseCurrency),
-  );
+  await deleteSheetTabs(account, cfg.sheetId, ["Я подумаю", "Я подумаю закрыть"]);
 
   return { active: active.length, expired: expired.length, total };
 }

@@ -2,7 +2,7 @@ import { logger } from "../../logger.js";
 import { ropAlertsConfig, ropAlertsEnabled } from "./alerts-config.js";
 import { isWithinRopAlertWindow } from "./alert-hours.js";
 import { maybeSendDailyDigest } from "./daily-digest.js";
-import { processDueWatches, scanUnpaidInvoices, scanUnprocessedLeads, scanRecentlyLostDeals } from "./rop-alerts.js";
+import { processDueWatches, scanRecentlyLostDeals, scanRecentlyPaidInvoices, scanUnpaidInvoices, scanUnprocessedLeads } from "./rop-alerts.js";
 
 let timer: ReturnType<typeof setInterval> | null = null;
 let running = false;
@@ -20,6 +20,7 @@ async function tick(): Promise<void> {
     const fired = await processDueWatches(cfg);
     await scanUnprocessedLeads(cfg);
     await scanUnpaidInvoices(cfg);
+    await scanRecentlyPaidInvoices(cfg);
     await scanRecentlyLostDeals(cfg);
     if (fired > 0) {
       logger.info("ROP alert watches processed", { fired });

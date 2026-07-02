@@ -1,4 +1,7 @@
 import { getGoogleAccessToken, type GoogleServiceAccount } from "./google-auth.js";
+import { BITRIX_LINK_HEADER, bitrixDealLink, bitrixLeadLink } from "../crm/bitrix-links.js";
+
+export { BITRIX_LINK_HEADER };
 
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
@@ -14,6 +17,7 @@ export const LEAD_HEADERS = [
   "Источник",
   "Менеджер ID",
   "Комментарий",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 export const DEAL_HEADERS = [
@@ -29,6 +33,7 @@ export const DEAL_HEADERS = [
   "Источник",
   "Менеджер ID",
   "Комментарий",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 /** Единый лист: лиды и сделки всех стран */
@@ -46,6 +51,7 @@ export const COMBINED_HEADERS = [
   "Источник",
   "Менеджер ID",
   "Комментарий",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 /** Сводка лидов и продаж по странам за месяц */
@@ -109,6 +115,7 @@ export const MANAGER_DEAL_HEADERS = [
   "Валюта",
   "Страна",
   "Источник",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 export const ACTIONS_SUMMARY_HEADERS = ["Метрика", "Значение"] as const;
@@ -123,6 +130,7 @@ export const UNPAID_INVOICE_HEADERS = [
   "Дней без ответа",
   "Менеджер",
   "Телефон",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 export const LOST_DIALOGUE_HEADERS = [
@@ -136,20 +144,26 @@ export const LOST_DIALOGUE_HEADERS = [
   "Ждёт (ч)",
   "Дата в переписке",
   "Последнее сообщение",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 /** @deprecated используйте LOST_DIALOGUE_HEADERS */
 export const UNANSWERED_CHAT_HEADERS = LOST_DIALOGUE_HEADERS;
 
 export const STALE_DEAL_HEADERS = [
-  "Сделка",
+  "Тип",
+  "ID",
   "Название",
   "Стадия",
   "Сумма",
   "Валюта",
-  "Дней без движения",
+  "Часов без ответа",
+  "Сообщение менеджера",
+  "Канал",
+  "Клиент",
   "Менеджер",
   "Телефон",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 export const THINK_DEAL_HEADERS = [
@@ -163,6 +177,7 @@ export const THINK_DEAL_HEADERS = [
   "Проблема",
   "👤 Менеджер",
   "Телефон",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 export const UNPROCESSED_LEAD_HEADERS = [
@@ -175,6 +190,7 @@ export const UNPROCESSED_LEAD_HEADERS = [
   "Часов без обработки",
   "Менеджер",
   "Телефон",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 export const LEAD_IN_WORK_HEADERS = [
@@ -186,6 +202,7 @@ export const LEAD_IN_WORK_HEADERS = [
   "Часов в работе",
   "Менеджер",
   "Телефон",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 export const DEAL_IN_DIALOGUE_HEADERS = [
@@ -199,6 +216,7 @@ export const DEAL_IN_DIALOGUE_HEADERS = [
   "Последнее сообщение",
   "Менеджер",
   "Телефон",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 export const SLOW_RESPONSE_HEADERS = [
@@ -207,6 +225,7 @@ export const SLOW_RESPONSE_HEADERS = [
   "Менеджер",
   "Первый ответ (мин)",
   "Дата",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 export function actionsSummaryTab(): string {
@@ -227,11 +246,11 @@ export function unansweredChatsTab(): string {
 }
 
 export function staleDealsTab(): string {
-  return "Зависшие сделки";
+  return "Клиент не ответил";
 }
 
 export function thinkDealsTab(): string {
-  return "Я подумаю";
+  return "Я подумаю (номера телефонов)";
 }
 
 export function thinkDealsExpiredTab(): string {
@@ -267,6 +286,7 @@ export const CUSTOMER_LTV_HEADERS = [
   "Покупок",
   "LTV",
   "Тип",
+  BITRIX_LINK_HEADER,
 ] as const;
 
 export const COHORT_REVENUE_HEADERS = ["Когорта", "Клиентов"] as const;
@@ -513,6 +533,40 @@ async function createSheetTab(token: string, spreadsheetId: string, title: strin
   await createSheetTabs(token, spreadsheetId, [title]);
 }
 
+/** Удаляет вкладки по названию (если есть). */
+export async function deleteSheetTabs(
+  account: GoogleServiceAccount,
+  spreadsheetId: string,
+  titles: string[],
+): Promise<string[]> {
+  const token = await getGoogleAccessToken(account);
+  const meta = await getSpreadsheetMeta(token, spreadsheetId);
+  const deleted: string[] = [];
+  const requests: Array<{ deleteSheet: { sheetId: number } }> = [];
+
+  for (const title of titles) {
+    const tab = meta.find((sheet) => sheet.title === title);
+    if (!tab?.sheetId) continue;
+    requests.push({ deleteSheet: { sheetId: tab.sheetId } });
+    deleted.push(title);
+  }
+
+  if (!requests.length) return deleted;
+
+  const res = await sheetsFetch(
+    `${SHEETS_API}/${spreadsheetId}:batchUpdate`,
+    {
+      method: "POST",
+      headers: sheetsHeaders(token),
+      body: JSON.stringify({ requests }),
+    },
+    true,
+  );
+  const json = (await res.json()) as { error?: { message?: string } };
+  if (!res.ok) throw new Error(json.error?.message ?? `Delete sheet tabs failed: HTTP ${res.status}`);
+  return deleted;
+}
+
 async function ensureHeaders(
   token: string,
   spreadsheetId: string,
@@ -637,6 +691,7 @@ export async function appendLeadRows(
       row.source,
       row.managerId,
       row.comments,
+      bitrixLeadLink(row.id),
     ]),
   );
 }
@@ -664,6 +719,7 @@ export async function appendDealRows(
       row.source,
       row.managerId,
       row.comments,
+      bitrixDealLink(row.id),
     ]),
   );
 }
@@ -683,6 +739,7 @@ export function leadToCombinedRow(row: AnalyticsLeadRow): SheetCell[] {
     row.source,
     row.managerId,
     row.comments,
+    bitrixLeadLink(row.id),
   ];
 }
 
@@ -701,6 +758,7 @@ export function dealToCombinedRow(row: AnalyticsDealRow): SheetCell[] {
     row.source,
     row.managerId,
     row.comments,
+    bitrixDealLink(row.id),
   ];
 }
 

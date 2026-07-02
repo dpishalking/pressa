@@ -9,8 +9,11 @@ import {
 } from "../crm/bitrix-client.js";
 import {
   getBitrixInvoiceById,
+  INVOICE_STAGE_PAID,
   INVOICE_STAGE_SENT,
+  invoicePaidAt,
   isInvoiceAwaitingPayment,
+  listRecentlyPaidInvoices,
   listSentInvoices,
   SMART_INVOICE_ENTITY_TYPE_ID,
 } from "../crm/bitrix-invoices.js";
@@ -300,6 +303,59 @@ async function fireInvoiceUnpaidAlert(
   if (shouldFinalizeAlert(result)) markAlertSent(alertKey, "invoice_unpaid");
 }
 
+export async function fireInvoicePaidAlert(invoiceId: string, cfg?: RopAlertsConfig): Promise<void> {
+  const settings = cfg ?? ropAlertsConfig();
+  const alertKey = `invoice_paid:${invoiceId}`;
+  if (wasAlertSent(alertKey)) return;
+
+  const invoice = await getBitrixInvoiceById(Number.parseInt(invoiceId, 10));
+  if (!invoice || invoice.stageId !== INVOICE_STAGE_PAID) return;
+
+  const converter = await fx(settings);
+  const amountEur = converter.convert(invoice.opportunity ?? 0, invoice.currencyId);
+  if (settings.invoiceMinEur > 0 && amountEur < settings.invoiceMinEur) return;
+
+  let clientName = invoice.title ?? "";
+  let manager = "не назначен";
+  let dealLink = "";
+
+  if (invoice.parentDealId) {
+    const deal = await getBitrixDealById(invoice.parentDealId);
+    if (deal) {
+      clientName = deal.TITLE ?? clientName;
+      const names = await resolveBitrixUserNames([String(deal.ASSIGNED_BY_ID ?? "")]);
+      manager = names.get(String(deal.ASSIGNED_BY_ID ?? "")) ?? manager;
+      dealLink = portalLink(settings, `/crm/deal/details/${deal.ID}/`);
+    }
+  }
+
+  const paidAt = invoicePaidAt(invoice);
+  const text = [
+    "💰 Оплата получена",
+    "",
+    `Сумма: ${eur(amountEur)}`,
+    `Счёт #${invoiceId}`,
+    clientName ? `Клиент: ${clientName}` : "",
+    `Менеджер: ${manager}`,
+    "",
+    "Открыть в Bitrix:",
+    dealLink || portalLink(settings, `/crm/type/31/details/${invoiceId}/`),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const result = await sendTelegramAlert(settings, text, {
+    relevantAt: paidAt || new Date().toISOString(),
+    alertType: "payments",
+    ignoreAlertWindow: true,
+  });
+  if (shouldFinalizeAlert(result)) {
+    markAlertSent(alertKey, "invoice_paid");
+    cancelWatch("invoice_unpaid", invoiceId);
+    clearAlertSent(`invoice_unpaid:${invoiceId}`);
+  }
+}
+
 async function dealAmountEur(deal: { OPPORTUNITY?: string; CURRENCY_ID?: string }, cfg: RopAlertsConfig): Promise<number> {
   const converter = await fx(cfg);
   return converter.convert(Number.parseFloat(deal.OPPORTUNITY ?? "0") || 0, deal.CURRENCY_ID);
@@ -554,6 +610,14 @@ export async function scanUnprocessedLeads(cfg?: RopAlertsConfig): Promise<void>
   }
 }
 
+export async function scanRecentlyPaidInvoices(cfg?: RopAlertsConfig): Promise<void> {
+  const settings = cfg ?? ropAlertsConfig();
+  const invoices = await listRecentlyPaidInvoices(hoursAgoIso(3));
+  for (const invoice of invoices) {
+    await fireInvoicePaidAlert(String(invoice.id), settings);
+  }
+}
+
 export async function scanUnpaidInvoices(cfg?: RopAlertsConfig): Promise<void> {
   const settings = cfg ?? ropAlertsConfig();
   if (!isWithinRopAlertWindow(settings)) return;
@@ -631,6 +695,8 @@ export async function handleBitrixWebhook(payload: BitrixWebhookPayload): Promis
       const invoice = await getBitrixInvoiceById(Number.parseInt(item.id, 10));
       if (invoice?.stageId === INVOICE_STAGE_SENT) {
         await scheduleInvoiceWatch(item.id, cfg);
+      } else if (invoice?.stageId === INVOICE_STAGE_PAID) {
+        await fireInvoicePaidAlert(item.id, cfg);
       } else {
         cancelWatch("invoice_unpaid", item.id);
       }

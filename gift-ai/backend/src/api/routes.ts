@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import { serveStatic } from "@hono/node-server/serve-static";
+import path from "node:path";
 import { chatEngine } from "../modules/chat-engine.js";
 import { conversationMemory } from "../modules/conversation-memory.js";
 import { knowledgeBase } from "../modules/knowledge-base.js";
@@ -18,6 +20,7 @@ import { handleCsoBotUpdate } from "../integrations/alerts/cso-bot.js";
 import { sendTelegramAlert, eur } from "../integrations/alerts/telegram-notify.js";
 import { listTelegramSubscriberDetails } from "../integrations/alerts/telegram-subscribers.js";
 import { getSubscriberSettings } from "../integrations/alerts/subscriber-settings.js";
+import { dashboard } from "./dashboard-routes.js";
 
 function verifyOutboundTokenEarly(token?: string): boolean {
   const expected = config.BITRIX24_OUTBOUND_TOKEN.trim();
@@ -509,3 +512,12 @@ admin.get("/stats/legacy", (c) => {
 });
 
 api.route("/admin", admin);
+api.route("/admin/dashboard", dashboard);
+
+const dashboardDist = config.DASHBOARD_DIST_PATH.trim();
+if (dashboardDist) {
+  const root = path.resolve(dashboardDist);
+  api.use("/dashboard/*", serveStatic({ root }));
+  api.get("/dashboard", (c) => c.redirect("/dashboard/"));
+  api.get("/dashboard/*", serveStatic({ root, path: "index.html" }));
+}

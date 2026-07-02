@@ -1,4 +1,5 @@
 import { collectSessionChats, type SessionChatStats } from "../crm/bitrix-openlines.js";
+import { bitrixSessionLink, bitrixOpenLineLink } from "../crm/bitrix-links.js";
 import { writeChatSheets, chatSummarySheetTab, chatMessagesSheetTab } from "../sheets/chat-analytics-write.js";
 import { sheetText, type SheetCell } from "../sheets/analytics-write.js";
 import { loadServiceAccount } from "../sheets/google-auth.js";
@@ -33,6 +34,7 @@ function sessionSummaryRows(stats: SessionChatStats[]): SheetCell[][] {
     row.managerCount,
     row.systemCount,
     row.firstResponseMinutes ?? "",
+    bitrixSessionLink(row.session),
   ]);
 }
 
@@ -46,6 +48,7 @@ function sessionMessageRows(stats: SessionChatStats[]): SheetCell[][] {
         message.date,
         AUTHOR_LABEL[message.author] ?? message.author,
         sheetText(message.text.slice(0, 5000)),
+        bitrixOpenLineLink(session.session.sessionId),
       ]);
     }
   }

@@ -14,12 +14,17 @@ import {
 import { listSentInvoices, isInvoiceAwaitingPayment, invoiceSentAt, type BitrixInvoice } from "./bitrix-invoices.js";
 import { fetchSessionChat, findLatestOpenLineSessionForOwners, listOpenLineSessions } from "./bitrix-openlines.js";
 import { buildLostDialogueRow, type LostDialogueRow } from "./lost-dialogue.js";
-import { LEAD_IN_WORK_STATUS_ID, leadTakenInWorkAt, type LeadInWorkRow } from "./lead-in-work.js";
+import { LEAD_IN_WORK_STATUS_ID, leadTakenInWorkAt, listLeadOpenContactTodos, hasNonOverdueContactTask, type LeadInWorkRow } from "./lead-in-work.js";
+import { LEAD_NEW_STATUS_ID, managerRepliedToLeadInChat } from "./lead-no-response.js";
 import {
   clientWaitingSince,
   DEAL_STAGE_IN_DIALOG,
   type DealInDialogueRow,
 } from "./deal-in-dialogue.js";
+import {
+  clientGhostedSince,
+  isFollowUpSalesDealStage,
+} from "./deal-client-no-reply.js";
 import {
   listDealOpenTodos,
   pickFutureTodoDeadline,
@@ -47,8 +52,12 @@ export type ActionListsThresholds = {
   lostDialogueWindowDays: number;
   /** Мин. часов без ответа менеджера клиенту для потерянного диалога. */
   lostDialogueMinHours: number;
-  /** Макс. дней просрочки контакта на стадии «Я подумаю»; дольше — закрыть. */
+  /** Мин. дней просрочки контакта на стадии «Я подумаю»; дольше — закрыть. */
   thinkDealMaxOverdueDays: number;
+  /** Мин. часов без ответа клиента после сообщения менеджера (лист «Клиент не ответил»). */
+  clientNoReplyMinHours: number;
+  /** Окно поиска чатов для «клиент не ответил» (дней назад). */
+  clientNoReplyWindowDays: number;
   /** Мин. часов в статусе «Лид взят в работу». */
   leadInWorkStaleHours: number;
   /** Мин. часов без ответа клиенту на стадии «В диалоге». */
@@ -64,6 +73,8 @@ export const DEFAULT_THRESHOLDS: ActionListsThresholds = {
   lostDialogueWindowDays: 14,
   lostDialogueMinHours: 2,
   thinkDealMaxOverdueDays: 15,
+  clientNoReplyMinHours: 24,
+  clientNoReplyWindowDays: 14,
   leadInWorkStaleHours: 24,
   dealInDialogueNoResponseHours: 24,
 };
@@ -97,11 +108,17 @@ export type ThinkDealRow = {
 };
 
 export type StaleDealRow = {
+  entityType: "deal" | "lead";
+  entityId: string;
   dealId: string;
   title: string;
   stageName: string;
   amountEur: number;
-  daysStale: number;
+  waitingHours: number;
+  lastManagerMessage: string;
+  lastManagerAt: string;
+  channel: string;
+  clientLabel: string;
   managerName: string;
   phone: string;
 };
@@ -271,40 +288,124 @@ async function buildUnpaidInvoices(
   return rows.sort((a, b) => b.amountEur - a.amountEur);
 }
 
-async function buildStaleDeals(
+async function buildClientNoReplyDeals(
   fx: FxConverter,
   users: Map<string, string>,
-  contacts: Map<string, BitrixContact>,
-  staleDays: number,
   stageLabels: Map<string, string>,
+  leadStatusLabels: Map<string, string>,
+  minHours: number,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<StaleDealRow[]> {
-  const deals = await listBitrixDeals({ STAGE_SEMANTIC_ID: "P" }, ["CONTACT_ID", "CLOSEDATE", "STAGE_ID"]);
-  const today = formatToday();
-  const rows: StaleDealRow[] = [];
+  const [leads, deals] = await Promise.all([
+    listBitrixLeads({ STATUS_ID: LEAD_IN_WORK_STATUS_ID }, ["PHONE", "CONTACT_ID"]),
+    listBitrixDeals(
+      { STAGE_SEMANTIC_ID: "P" },
+      ["CONTACT_ID", "LEAD_ID", "STAGE_ID", "OPPORTUNITY", "CURRENCY_ID", "TITLE", "ASSIGNED_BY_ID"],
+    ),
+  ]);
 
-  for (const deal of deals) {
-    const nextContact = String(deal.CLOSEDATE ?? "").slice(0, 10);
-    if (deal.STAGE_ID === THINK_DEAL_STAGE_ID) continue;
+  const salesDeals = deals.filter((deal) => isFollowUpSalesDealStage(deal.STAGE_ID ?? ""));
+  const dealLeadIds = new Set(
+    salesDeals.map((deal) => String(deal.LEAD_ID ?? "")).filter((id) => id && id !== "0"),
+  );
 
-    const daysStale = daysBetween(deal.DATE_MODIFY ?? deal.DATE_CREATE ?? "");
-    if (daysStale < staleDays) continue;
-
-    const contactId = String(deal.CONTACT_ID ?? "");
-    const contact = contactId ? contacts.get(contactId) : undefined;
-    const amount = Number.parseFloat(deal.OPPORTUNITY ?? "0") || 0;
-
-    rows.push({
-      dealId: String(deal.ID),
-      title: deal.TITLE ?? "",
-      stageName: stageLabels.get(deal.STAGE_ID ?? "") ?? deal.STAGE_ID ?? "",
-      amountEur: fx.convert(amount, deal.CURRENCY_ID),
-      daysStale,
-      managerName: users.get(String(deal.ASSIGNED_BY_ID ?? "")) ?? String(deal.ASSIGNED_BY_ID ?? ""),
-      phone: phoneFromContact(contact),
-    });
+  type Candidate = { kind: "lead" | "deal"; lead?: BitrixLead; deal?: BitrixDeal; id: string };
+  const candidates: Candidate[] = [];
+  for (const deal of salesDeals) candidates.push({ kind: "deal", deal, id: String(deal.ID) });
+  for (const lead of leads) {
+    if (dealLeadIds.has(String(lead.ID))) continue;
+    candidates.push({ kind: "lead", lead, id: String(lead.ID) });
   }
 
-  return rows.sort((a, b) => b.amountEur - a.amountEur);
+  const crmCache = new SessionCrmCache();
+  const rows: StaleDealRow[] = [];
+
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i]!;
+    const owners =
+      candidate.kind === "deal"
+        ? [
+            { ownerTypeId: "2" as const, ownerId: candidate.id },
+            { ownerTypeId: "1" as const, ownerId: String(candidate.deal?.LEAD_ID ?? "") },
+            { ownerTypeId: "3" as const, ownerId: String(candidate.deal?.CONTACT_ID ?? "") },
+          ]
+        : [
+            { ownerTypeId: "1" as const, ownerId: candidate.id },
+            { ownerTypeId: "3" as const, ownerId: String(candidate.lead?.CONTACT_ID ?? "") },
+          ];
+
+    const session = await findLatestOpenLineSessionForOwners(
+      owners.filter((owner) => owner.ownerId && owner.ownerId !== "0"),
+    );
+    if (!session) {
+      onProgress?.(i + 1, candidates.length);
+      if (i + 1 < candidates.length) await sleep(80);
+      continue;
+    }
+    if (!(await isOpenLineSessionAlertable(session, crmCache))) {
+      onProgress?.(i + 1, candidates.length);
+      if (i + 1 < candidates.length) await sleep(80);
+      continue;
+    }
+
+    const stats = await fetchSessionChat(session);
+    const clientMessages = stats.messages.filter((message) => message.author === "client" && message.text);
+    const managerMessages = stats.messages.filter((message) => message.author === "manager" && message.text);
+    const ghosted = clientGhostedSince(
+      clientMessages,
+      managerMessages,
+      minHours,
+      stats.instagramPostComment,
+    );
+
+    if (ghosted) {
+      const ctx = await resolveSessionCrmContext(session, crmCache);
+      const managerId =
+        session.responsibleId ||
+        String(candidate.deal?.ASSIGNED_BY_ID ?? candidate.lead?.ASSIGNED_BY_ID ?? "");
+      const managerName = users.get(managerId) ?? managerId;
+
+      if (candidate.kind === "deal" && candidate.deal) {
+        const amount = Number.parseFloat(candidate.deal.OPPORTUNITY ?? "0") || 0;
+        rows.push({
+          entityType: "deal",
+          entityId: candidate.id,
+          dealId: candidate.id,
+          title: candidate.deal.TITLE ?? session.clientLabel,
+          stageName: stageLabels.get(candidate.deal.STAGE_ID ?? "") ?? candidate.deal.STAGE_ID ?? "",
+          amountEur: fx.convert(amount, candidate.deal.CURRENCY_ID),
+          waitingHours: ghosted.waitingHours,
+          lastManagerMessage: ghosted.lastManagerMessage.slice(0, 200),
+          lastManagerAt: ghosted.lastManagerAt.slice(0, 16).replace("T", " "),
+          channel: session.channel,
+          clientLabel: session.clientLabel,
+          managerName,
+          phone: ctx.phone,
+        });
+      } else if (candidate.kind === "lead" && candidate.lead) {
+        rows.push({
+          entityType: "lead",
+          entityId: candidate.id,
+          dealId: "",
+          title: candidate.lead.TITLE ?? session.clientLabel,
+          stageName: leadStatusLabels.get(candidate.lead.STATUS_ID ?? "") ?? candidate.lead.STATUS_ID ?? "",
+          amountEur: 0,
+          waitingHours: ghosted.waitingHours,
+          lastManagerMessage: ghosted.lastManagerMessage.slice(0, 200),
+          lastManagerAt: ghosted.lastManagerAt.slice(0, 16).replace("T", " "),
+          channel: session.channel,
+          clientLabel: session.clientLabel,
+          managerName,
+          phone: ctx.phone || phoneFromLead(candidate.lead),
+        });
+      }
+    }
+
+    onProgress?.(i + 1, candidates.length);
+    if (i + 1 < candidates.length) await sleep(80);
+  }
+
+  return rows.sort((a, b) => b.waitingHours - a.waitingHours || b.amountEur - a.amountEur);
 }
 
 export async function buildThinkDeals(
@@ -377,6 +478,28 @@ export async function buildThinkDeals(
   return { active: sort(active), expired: sort(expired) };
 }
 
+export async function enrichThinkDealPhones(rows: ThinkDealRow[]): Promise<void> {
+  if (rows.length === 0) return;
+
+  const dealIds = rows.map((row) => Number.parseInt(row.dealId, 10)).filter(Boolean);
+  const dealsById = await loadDealsByIds(dealIds);
+  const contactIds = new Set<string>();
+  for (const deal of dealsById.values()) {
+    const id = String(deal.CONTACT_ID ?? "");
+    if (id && id !== "0") contactIds.add(id);
+  }
+
+  const contacts = new Map(
+    (await listBitrixContactsByIds([...contactIds])).map((contact) => [String(contact.ID), contact]),
+  );
+
+  for (const row of rows) {
+    const deal = dealsById.get(Number.parseInt(row.dealId, 10));
+    const contact = deal?.CONTACT_ID ? contacts.get(String(deal.CONTACT_ID)) : undefined;
+    if (contact) row.phone = phoneFromContact(contact);
+  }
+}
+
 async function buildUnprocessedLeads(
   users: Map<string, string>,
   contacts: Map<string, BitrixContact>,
@@ -385,9 +508,11 @@ async function buildUnprocessedLeads(
   leadCountryField: string,
   leadFieldMeta: Awaited<ReturnType<typeof getLeadFieldMap>>,
   hours: number,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<UnprocessedLeadRow[]> {
   const leads = await listBitrixLeads(
     {
+      STATUS_ID: LEAD_NEW_STATUS_ID,
       STATUS_SEMANTIC_ID: "P",
       "<DATE_CREATE": hoursAgoIso(hours),
     },
@@ -395,23 +520,36 @@ async function buildUnprocessedLeads(
   );
 
   const rows: UnprocessedLeadRow[] = [];
-  for (const lead of leads) {
+  for (let i = 0; i < leads.length; i++) {
+    const lead = leads[i]!;
+    const leadId = String(lead.ID);
+    const created = lead.DATE_CREATE ?? "";
+
+    if (created && (await managerRepliedToLeadInChat(leadId, created))) {
+      onProgress?.(i + 1, leads.length);
+      if (i + 1 < leads.length) await sleep(120);
+      continue;
+    }
+
     const contactId = String(lead.CONTACT_ID ?? "");
     const contact = contactId ? contacts.get(contactId) : undefined;
     const phone = phoneFromLead(lead) || phoneFromContact(contact);
 
     rows.push({
-      leadId: String(lead.ID),
+      leadId,
       title: lead.TITLE ?? [lead.NAME, lead.LAST_NAME].filter(Boolean).join(" "),
       sourceName: sourceLabels.get(lead.SOURCE_ID ?? "") ?? lead.SOURCE_ID ?? "",
       country: countryDisplayValue(leadFieldMeta, leadCountryField, lead[leadCountryField]),
-      createdAt: (lead.DATE_CREATE ?? "").slice(0, 16).replace("T", " "),
+      createdAt: created.slice(0, 16).replace("T", " "),
       stageName: statusLabels.get(lead.STATUS_ID ?? "") ?? lead.STATUS_ID ?? "",
-      hoursWaiting: hoursBetween(lead.DATE_CREATE ?? ""),
+      hoursWaiting: hoursBetween(created),
       managerName: users.get(String(lead.ASSIGNED_BY_ID ?? "")) ?? String(lead.ASSIGNED_BY_ID ?? ""),
       phone,
       contactId,
     });
+
+    onProgress?.(i + 1, leads.length);
+    if (i + 1 < leads.length) await sleep(120);
   }
 
   return rows.sort((a, b) => b.hoursWaiting - a.hoursWaiting);
@@ -434,6 +572,9 @@ async function buildLeadsInWorkStale(
     const takenAt = await leadTakenInWorkAt(String(lead.ID));
     const hoursInWork = hoursBetween(takenAt ?? lead.DATE_MODIFY ?? lead.DATE_CREATE ?? "");
     if (hoursInWork < minHours) continue;
+
+    const contactTodos = await listLeadOpenContactTodos(String(lead.ID));
+    if (hasNonOverdueContactTask(contactTodos)) continue;
 
     const contactId = String(lead.CONTACT_ID ?? "");
     const contact = contactId ? contacts.get(contactId) : undefined;
@@ -593,6 +734,48 @@ async function scanLostDialogues(
   return lost;
 }
 
+export async function buildUnprocessedLeadsList(opts?: {
+  thresholds?: ActionListsThresholds;
+  config?: Pick<ActionsExportConfig, "leadCountryField">;
+  onProgress?: (done: number, total: number) => void;
+}): Promise<UnprocessedLeadRow[]> {
+  const thresholds = opts?.thresholds ?? DEFAULT_THRESHOLDS;
+
+  const [sourceLabels, leadStatusLabels, leadFields] = await Promise.all([
+    listBitrixStatusLabels("SOURCE"),
+    listBitrixStatusLabels("STATUS"),
+    getLeadFieldMap(),
+  ]);
+  const users = new Map<string, string>();
+  const leadCountryField =
+    opts?.config?.leadCountryField ?? findFieldByTitle(leadFields, "Страна") ?? "UF_CRM_COUNTRY";
+
+  const rows = await buildUnprocessedLeads(
+    users,
+    new Map(),
+    sourceLabels,
+    leadStatusLabels,
+    leadCountryField,
+    leadFields,
+    thresholds.leadUnprocessedHours,
+    opts?.onProgress,
+  );
+
+  await enrichManagerNames({
+    unpaidInvoices: [],
+    staleDeals: [],
+    unprocessedLeads: rows,
+    leadsInWorkStale: [],
+    dealsInDialogueStale: [],
+    unansweredChats: [],
+    thinkDeals: [],
+    thinkDealsExpired: [],
+    slowResponses: [],
+  });
+
+  return rows;
+}
+
 export async function buildLostDialoguesList(opts?: {
   thresholds?: ActionListsThresholds;
   onProgress?: (done: number, total: number) => void;
@@ -701,7 +884,14 @@ export async function buildActionLists(opts: {
 
   opts.onProgress?.("deals", 0, 1);
   const [staleDeals, thinkSplit] = await Promise.all([
-    buildStaleDeals(fx, users, new Map(), thresholds.dealStaleDays, stageLabels),
+    buildClientNoReplyDeals(
+      fx,
+      users,
+      stageLabels,
+      leadStatusLabels,
+      thresholds.clientNoReplyMinHours,
+      (done, total) => opts.onProgress?.("client_no_reply", done, total),
+    ),
     buildThinkDeals(
       fx,
       users,
@@ -740,7 +930,10 @@ export async function buildActionLists(opts: {
   const contactIds = new Set<string>();
   const dealIds = [
     ...unpaidInvoices.map((row) => row.dealId),
-    ...staleDeals.map((row) => Number.parseInt(row.dealId, 10)).filter(Boolean),
+    ...staleDeals
+      .filter((row) => row.entityType === "deal" && row.dealId)
+      .map((row) => Number.parseInt(row.dealId, 10))
+      .filter(Boolean),
     ...thinkDeals.map((row) => Number.parseInt(row.dealId, 10)).filter(Boolean),
     ...thinkDealsExpired.map((row) => Number.parseInt(row.dealId, 10)).filter(Boolean),
   ];
@@ -773,20 +966,13 @@ export async function buildActionLists(opts: {
     }
   }
   for (const row of staleDeals) {
+    if (row.phone) continue;
+    if (row.entityType !== "deal" || !row.dealId) continue;
     const deal = dealsById.get(Number.parseInt(row.dealId, 10));
     const contact = deal?.CONTACT_ID ? contacts.get(String(deal.CONTACT_ID)) : undefined;
     if (contact) row.phone = phoneFromContact(contact);
   }
-  for (const row of thinkDeals) {
-    const deal = dealsById.get(Number.parseInt(row.dealId, 10));
-    const contact = deal?.CONTACT_ID ? contacts.get(String(deal.CONTACT_ID)) : undefined;
-    if (contact) row.phone = phoneFromContact(contact);
-  }
-  for (const row of thinkDealsExpired) {
-    const deal = dealsById.get(Number.parseInt(row.dealId, 10));
-    const contact = deal?.CONTACT_ID ? contacts.get(String(deal.CONTACT_ID)) : undefined;
-    if (contact) row.phone = phoneFromContact(contact);
-  }
+  await enrichThinkDealPhones([...thinkDeals, ...thinkDealsExpired]);
   for (const row of unprocessedLeads) {
     if (!row.phone && row.contactId) {
       row.phone = phoneFromContact(contacts.get(row.contactId));

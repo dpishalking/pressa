@@ -13,10 +13,9 @@ import { loadFxConverter } from "../analytics/fx-rates.js";
 import {
   UNPAID_INVOICE_HEADERS,
   unpaidInvoicesTab,
-  sheetAmount,
-  sheetText,
   writeSheetContent,
 } from "../sheets/analytics-write.js";
+import { unpaidInvoiceSheetRows } from "./action-sheet-rows.js";
 import type { GoogleServiceAccount } from "../sheets/google-auth.js";
 
 function formatToday(): string {
@@ -106,17 +105,7 @@ export async function buildUnpaidInvoicesDirect(
     cfg.sheetId,
     unpaidInvoicesTab(),
     UNPAID_INVOICE_HEADERS,
-    rows.map((row) => [
-      row.invoiceId,
-      row.dealId,
-      sheetText(row.clientName),
-      sheetAmount(row.amountEur),
-      cfg.baseCurrency,
-      row.createdDate,
-      row.daysUnpaid,
-      sheetText(row.managerName),
-      sheetText(row.phone),
-    ]),
+    unpaidInvoiceSheetRows(rows, cfg.baseCurrency),
   );
 
   return { unpaid: rows.length, production };

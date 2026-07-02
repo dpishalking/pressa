@@ -1,4 +1,5 @@
 import { buildCustomerLtv, type CustomerLtvBuildResult } from "../crm/bitrix-customer-ltv.js";
+import { bitrixContactLink } from "../crm/bitrix-links.js";
 import {
   cohortMatrixHeaders,
   CUSTOMER_LTV_HEADERS,
@@ -60,6 +61,7 @@ function customerRows(customers: CustomerLtvBuildResult["customers"]): SheetCell
     customer.orderCount,
     sheetAmount(customer.ltvEur),
     customer.orderCount > 1 ? "Повторный" : "Одноразовый",
+    bitrixContactLink(customer.contactId),
   ]);
 }
 

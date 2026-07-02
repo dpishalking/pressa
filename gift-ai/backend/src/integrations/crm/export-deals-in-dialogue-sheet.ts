@@ -12,10 +12,9 @@ import { loadFxConverter } from "../analytics/fx-rates.js";
 import {
   DEAL_IN_DIALOGUE_HEADERS,
   dealsInDialogueTab,
-  sheetAmount,
-  sheetText,
   writeSheetContent,
 } from "../sheets/analytics-write.js";
+import { dealInDialogueSheetRows } from "./action-sheet-rows.js";
 import type { GoogleServiceAccount } from "../sheets/google-auth.js";
 
 function sleep(ms: number): Promise<void> {
@@ -114,18 +113,7 @@ export async function buildDealsInDialogueDirect(
     cfg.sheetId,
     dealsInDialogueTab(),
     DEAL_IN_DIALOGUE_HEADERS,
-    rows.map((row) => [
-      row.dealId,
-      sheetText(row.title),
-      sheetAmount(row.amountEur),
-      cfg.baseCurrency,
-      sheetText(row.channel),
-      sheetText(row.clientLabel),
-      row.waitingHours,
-      sheetText(row.lastClientMessage),
-      sheetText(row.managerName),
-      sheetText(row.phone),
-    ]),
+    dealInDialogueSheetRows(rows, cfg.baseCurrency),
   );
 
   return { stale: rows.length, totalInDialogue: deals.length };

@@ -160,6 +160,51 @@ export async function listUnpaidInvoices(): Promise<BitrixInvoice[]> {
   return listSentInvoices(0);
 }
 
+/** Дата оплаты — movedTime при переходе в «Оплачено». */
+export function invoicePaidAt(invoice: { stageId?: string; movedTime?: string; createdTime?: string }): string {
+  if (invoice.stageId === INVOICE_STAGE_PAID && invoice.movedTime) return invoice.movedTime;
+  return invoice.createdTime ?? "";
+}
+
+export async function listRecentlyPaidInvoices(sinceIso: string): Promise<BitrixInvoice[]> {
+  const items: BitrixInvoice[] = [];
+  let start = 0;
+
+  while (true) {
+    const response = await bitrixCall("crm.item.list", {
+      entityTypeId: SMART_INVOICE_ENTITY_TYPE_ID,
+      filter: {
+        stageId: INVOICE_STAGE_PAID,
+        ">=movedTime": sinceIso,
+      },
+      select: ["id", "title", "stageId", "opportunity", "currencyId", "parentId2", "createdTime", "movedTime"],
+      order: { movedTime: "DESC" },
+      start,
+    });
+
+    const batch = (response.result as { items?: Array<Record<string, unknown>> } | undefined)?.items ?? [];
+    for (const row of batch) {
+      items.push({
+        id: Number(row.id),
+        title: row.title != null ? String(row.title) : undefined,
+        stageId: row.stageId != null ? String(row.stageId) : undefined,
+        opportunity: Number(row.opportunity ?? 0),
+        currencyId: row.currencyId != null ? String(row.currencyId) : undefined,
+        parentDealId: row.parentId2 ? Number(row.parentId2) : undefined,
+        createdTime: row.createdTime != null ? String(row.createdTime) : undefined,
+        movedTime: row.movedTime != null ? String(row.movedTime) : undefined,
+      });
+    }
+
+    const total = Number(response.total ?? 0);
+    start += batch.length;
+    if (!batch.length || start >= total) break;
+    await sleep(300);
+  }
+
+  return items;
+}
+
 export async function getBitrixInvoiceById(id: number): Promise<BitrixInvoice | null> {
   const response = await bitrixCall("crm.item.get", {
     entityTypeId: SMART_INVOICE_ENTITY_TYPE_ID,

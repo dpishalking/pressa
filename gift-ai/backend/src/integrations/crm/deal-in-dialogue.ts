@@ -1,4 +1,5 @@
 import type { ParsedChatMessage } from "./bitrix-openlines.js";
+import { clientMessageNeedsManagerResponse } from "./lost-dialogue.js";
 
 /** «В диалоге» */
 export const DEAL_STAGE_IN_DIALOG = "UC_8ZC4BD";
@@ -28,6 +29,8 @@ export function clientWaitingSince(
     Boolean(lastClient) && (!lastManager || lastClient!.date > lastManager.date);
 
   if (!clientWaiting || !lastClient) return null;
+
+  if (!clientMessageNeedsManagerResponse(lastClient.text)) return null;
 
   const waitingHours = Math.max(
     0,

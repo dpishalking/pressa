@@ -1,7 +1,9 @@
 import { todayRange } from "../analytics/date-ranges.js";
+import { countLeadTraffic } from "../analytics/lead-traffic.js";
 import { loadFxConverter } from "../analytics/fx-rates.js";
-import { listBitrixDeals, listBitrixLeads } from "../crm/bitrix-client.js";
+import { listBitrixDeals, listBitrixLeads, listBitrixStatusLabels } from "../crm/bitrix-client.js";
 import {
+  INVOICE_STAGE_LOST,
   INVOICE_STAGE_PAID,
   listInvoicesCreatedInRange,
 } from "../crm/bitrix-invoices.js";
@@ -16,14 +18,19 @@ import { eur, sendTelegramDigest } from "./telegram-notify.js";
 export type DailyDigestStats = {
   date: string;
   leads: number;
+  leadsPaid: number;
+  leadsOrganic: number;
   wonDeals: number;
   wonRevenueEur: number;
   lostDeals: number;
   lostAmountEur: number;
   chatSessions: number;
-  invoicesCreated: number;
-  invoicesPaid: number;
-  invoicesPaidEur: number;
+  /** Счета, созданные сегодня (без отменённых). */
+  invoicesIssued: number;
+  invoicesIssuedEur: number;
+  /** Оплаченные счета из выставленных сегодня. */
+  invoicesReceived: number;
+  invoicesReceivedEur: number;
 };
 
 function buildWonDealFilter(range: { from: string; to: string }, salesStageIds: string[]): Record<string, unknown> {
@@ -66,13 +73,20 @@ export async function buildDailyDigestStats(cfg: RopAlertsConfig, now = new Date
     overrides: cfg.fxOverrides,
   });
 
-  const [leads, wonDeals, lostDeals, sessions, invoices] = await Promise.all([
-    listBitrixLeads({ ">=DATE_CREATE": range.from, "<DATE_CREATE": range.to }, []),
+  const [sourceLabels, statusLabels, leads, wonDeals, lostDeals, sessions, invoices] = await Promise.all([
+    listBitrixStatusLabels("SOURCE"),
+    listBitrixStatusLabels("STATUS"),
+    listBitrixLeads(
+      { ">=DATE_CREATE": range.from, "<DATE_CREATE": range.to },
+      ["SOURCE_DESCRIPTION", "UTM_SOURCE", "UTM_MEDIUM", "UTM_CAMPAIGN", "STATUS_ID"],
+    ),
     listBitrixDeals(buildWonDealFilter(range, cfg.salesStageIds), []),
     listBitrixDeals(buildLostDealFilter(range), []),
     listOpenLineSessions(range),
     listInvoicesCreatedInRange(range),
   ]);
+
+  const leadTraffic = countLeadTraffic(leads, sourceLabels, statusLabels);
 
   const wonRevenueEur = wonDeals.reduce(
     (sum, deal) => sum + fx.convert(Number.parseFloat(deal.OPPORTUNITY ?? "0") || 0, deal.CURRENCY_ID),
@@ -83,25 +97,37 @@ export async function buildDailyDigestStats(cfg: RopAlertsConfig, now = new Date
     0,
   );
 
-  let invoicesPaid = 0;
-  let invoicesPaidEur = 0;
+  let invoicesIssued = 0;
+  let invoicesIssuedEur = 0;
+  let invoicesReceived = 0;
+  let invoicesReceivedEur = 0;
   for (const invoice of invoices) {
-    if (invoice.stageId !== INVOICE_STAGE_PAID) continue;
-    invoicesPaid += 1;
-    invoicesPaidEur += fx.convert(invoice.opportunity ?? 0, invoice.currencyId);
+    if (invoice.stageId === INVOICE_STAGE_LOST) continue;
+
+    const amountEur = fx.convert(invoice.opportunity ?? 0, invoice.currencyId);
+    invoicesIssued += 1;
+    invoicesIssuedEur += amountEur;
+
+    if (invoice.stageId === INVOICE_STAGE_PAID) {
+      invoicesReceived += 1;
+      invoicesReceivedEur += amountEur;
+    }
   }
 
   return {
     date: range.from,
-    leads: leads.length,
+    leads: leadTraffic.marketingTotal,
+    leadsPaid: leadTraffic.traffic,
+    leadsOrganic: leadTraffic.organic,
     wonDeals: wonDeals.length,
     wonRevenueEur,
     lostDeals: lostDeals.length,
     lostAmountEur,
     chatSessions: sessions.length,
-    invoicesCreated: invoices.length,
-    invoicesPaid,
-    invoicesPaidEur,
+    invoicesIssued,
+    invoicesIssuedEur,
+    invoicesReceived,
+    invoicesReceivedEur,
   };
 }
 
@@ -111,11 +137,14 @@ export function formatDailyDigestMessage(stats: DailyDigestStats): string {
     `📊 Итоги дня · ${formatDigestDateLabel(stats.date)}`,
     "",
     `Лиды: ${stats.leads}`,
+    `· трафик: ${stats.leadsPaid}`,
+    `· органика: ${stats.leadsOrganic}`,
     `Выиграно сделок: ${stats.wonDeals} · ${eur(stats.wonRevenueEur)}`,
     `Проиграно сделок: ${stats.lostDeals}${stats.lostDeals > 0 ? ` · ${eur(stats.lostAmountEur)}` : ""}`,
     "",
     `Диалоги Open Lines: ${stats.chatSessions}`,
-    `Счета выставлено: ${stats.invoicesCreated} (оплачено ${stats.invoicesPaid} · ${eur(stats.invoicesPaidEur)})`,
+    `Счета выставлено: ${stats.invoicesIssued} · ${eur(stats.invoicesIssuedEur)}`,
+    `Деньги получено: ${stats.invoicesReceived} · ${eur(stats.invoicesReceivedEur)}`,
   ];
 
   if (stats.wonDeals > 0) {

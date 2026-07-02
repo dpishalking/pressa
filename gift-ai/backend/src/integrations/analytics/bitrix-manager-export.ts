@@ -19,6 +19,7 @@ import {
   type SheetCell,
 } from "../sheets/analytics-write.js";
 import { loadServiceAccount } from "../sheets/google-auth.js";
+import { bitrixDealLink } from "../crm/bitrix-links.js";
 import { monthRange, type ExportDateRange } from "./bitrix-country-export.js";
 import { logger } from "../../logger.js";
 
@@ -100,6 +101,7 @@ function managerDashboardRows(dashboard: ManagerDashboard, month: string, baseCu
       baseCurrency,
       row.country,
       sheetText(row.source),
+      bitrixDealLink(row.id),
     ]),
   ];
 

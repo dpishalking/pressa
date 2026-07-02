@@ -109,6 +109,14 @@ CREATE TABLE IF NOT EXISTS rop_alert_watch (
 CREATE INDEX IF NOT EXISTS idx_rop_alert_watch_pending
   ON rop_alert_watch(status, check_after);
 
+CREATE TABLE IF NOT EXISTS dashboard_plans (
+  month TEXT PRIMARY KEY,
+  leads INTEGER NOT NULL DEFAULT 0,
+  deals INTEGER NOT NULL DEFAULT 0,
+  revenue_eur REAL NOT NULL DEFAULT 0,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS rop_telegram_subscribers (
   chat_id TEXT PRIMARY KEY,
   username TEXT NOT NULL DEFAULT '',
@@ -119,6 +127,7 @@ CREATE TABLE IF NOT EXISTS rop_telegram_subscribers (
   notify_leads INTEGER NOT NULL DEFAULT 1,
   notify_chats INTEGER NOT NULL DEFAULT 1,
   notify_invoices INTEGER NOT NULL DEFAULT 1,
+  notify_payments INTEGER NOT NULL DEFAULT 1,
   notify_lost_deals INTEGER NOT NULL DEFAULT 1,
   notify_vip INTEGER NOT NULL DEFAULT 1,
   notify_daily_digest INTEGER NOT NULL DEFAULT 1
@@ -145,6 +154,7 @@ export function getDb(): Database.Database {
     `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_leads INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_chats INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_invoices INTEGER NOT NULL DEFAULT 1`,
+    `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_payments INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_lost_deals INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_vip INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE rop_telegram_subscribers ADD COLUMN notify_daily_digest INTEGER NOT NULL DEFAULT 1`,

@@ -8,14 +8,14 @@ import {
   resolveBitrixUserNames,
 } from "./bitrix-client.js";
 import { DEFAULT_THRESHOLDS, type LeadInWorkRow } from "./bitrix-action-lists.js";
-import { LEAD_IN_WORK_STATUS_ID, leadTakenInWorkAt } from "./lead-in-work.js";
+import { LEAD_IN_WORK_STATUS_ID, leadTakenInWorkAt, listLeadOpenContactTodos, hasNonOverdueContactTask } from "./lead-in-work.js";
 import type { ActionsExportConfig } from "../analytics/actions-config.js";
 import {
   LEAD_IN_WORK_HEADERS,
   leadsInWorkTab,
-  sheetText,
   writeSheetContent,
 } from "../sheets/analytics-write.js";
+import { leadInWorkSheetRows } from "./action-sheet-rows.js";
 import type { GoogleServiceAccount } from "../sheets/google-auth.js";
 
 function sleep(ms: number): Promise<void> {
@@ -60,6 +60,9 @@ export async function buildLeadsInWorkDirect(
     const hoursInWork = hoursBetween(takenAt ?? lead.DATE_MODIFY ?? lead.DATE_CREATE ?? "");
     if (hoursInWork < minHours) continue;
 
+    const contactTodos = await listLeadOpenContactTodos(String(lead.ID));
+    if (hasNonOverdueContactTask(contactTodos)) continue;
+
     const contactId = String(lead.CONTACT_ID ?? "");
     rows.push({
       leadId: String(lead.ID),
@@ -98,16 +101,7 @@ export async function buildLeadsInWorkDirect(
     cfg.sheetId,
     leadsInWorkTab(),
     LEAD_IN_WORK_HEADERS,
-    rows.map((row) => [
-      row.leadId,
-      sheetText(row.title),
-      sheetText(row.sourceName),
-      sheetText(row.country),
-      row.inWorkSince,
-      row.hoursInWork,
-      sheetText(row.managerName),
-      sheetText(row.phone),
-    ]),
+    leadInWorkSheetRows(rows),
   );
 
   return { stale: rows.length, totalInWork: leads.length };

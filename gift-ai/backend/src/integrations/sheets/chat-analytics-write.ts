@@ -5,6 +5,7 @@ import {
   tabRange,
   type SheetCell,
 } from "./analytics-write.js";
+import { BITRIX_LINK_HEADER } from "../crm/bitrix-links.js";
 
 const SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets";
 
@@ -35,9 +36,10 @@ export const CHAT_SUMMARY_HEADERS = [
   "От менеджера",
   "Системных",
   "Первый ответ (мин)",
+  BITRIX_LINK_HEADER,
 ] as const;
 
-export const CHAT_MESSAGE_HEADERS = ["Сессия", "Дата", "Автор", "Текст"] as const;
+export const CHAT_MESSAGE_HEADERS = ["Сессия", "Дата", "Автор", "Текст", BITRIX_LINK_HEADER] as const;
 
 export function chatSummarySheetTab(yearMonth: string): string {
   const [yearStr, monthStr] = yearMonth.split("-");
