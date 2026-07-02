@@ -11,6 +11,7 @@ export type OpenLineSession = {
   ownerTypeId: string;
   ownerId: string;
   responsibleId: string;
+  completed: boolean;
 };
 
 export type ChatAuthor = "system" | "client" | "manager";
@@ -67,6 +68,7 @@ export async function listOpenLineSessions(range: ExportDateRange): Promise<Open
         "OWNER_TYPE_ID",
         "OWNER_ID",
         "RESPONSIBLE_ID",
+        "COMPLETED",
       ],
       order: { CREATED: "ASC" },
       start,
@@ -88,6 +90,7 @@ export async function listOpenLineSessions(range: ExportDateRange): Promise<Open
         ownerTypeId: String(row.OWNER_TYPE_ID ?? ""),
         ownerId: String(row.OWNER_ID ?? ""),
         responsibleId: String(row.RESPONSIBLE_ID ?? ""),
+        completed: String(row.COMPLETED ?? "").toUpperCase() === "Y",
       });
     }
 
@@ -98,6 +101,55 @@ export async function listOpenLineSessions(range: ExportDateRange): Promise<Open
   }
 
   return items;
+}
+
+function activityToSession(row: Record<string, string>): OpenLineSession {
+  const subject = row.SUBJECT ?? "";
+  const { clientLabel, channel } = parseSubject(subject);
+  return {
+    activityId: String(row.ID),
+    sessionId: String(row.ASSOCIATED_ENTITY_ID ?? ""),
+    subject,
+    channel,
+    clientLabel,
+    created: row.CREATED ?? "",
+    ownerTypeId: String(row.OWNER_TYPE_ID ?? ""),
+    ownerId: String(row.OWNER_ID ?? ""),
+    responsibleId: String(row.RESPONSIBLE_ID ?? ""),
+    completed: String(row.COMPLETED ?? "").toUpperCase() === "Y",
+  };
+}
+
+export async function findLatestOpenLineSessionForOwners(
+  owners: Array<{ ownerTypeId: string; ownerId: string }>,
+): Promise<OpenLineSession | null> {
+  for (const { ownerTypeId, ownerId } of owners) {
+    if (!ownerId || ownerId === "0") continue;
+
+    const response = await bitrixCall("crm.activity.list", {
+      filter: {
+        PROVIDER_ID: "IMOPENLINES_SESSION",
+        OWNER_TYPE_ID: ownerTypeId,
+        OWNER_ID: ownerId,
+      },
+      select: [
+        "ID",
+        "SUBJECT",
+        "CREATED",
+        "ASSOCIATED_ENTITY_ID",
+        "OWNER_TYPE_ID",
+        "OWNER_ID",
+        "RESPONSIBLE_ID",
+        "COMPLETED",
+      ],
+      order: { CREATED: "DESC" },
+      start: 0,
+    });
+
+    const row = (response.result as Array<Record<string, string>> | undefined)?.[0];
+    if (row?.ASSOCIATED_ENTITY_ID) return activityToSession(row);
+  }
+  return null;
 }
 
 export async function findOpenLineSessionBySessionId(sessionId: string): Promise<OpenLineSession | null> {
@@ -114,6 +166,7 @@ export async function findOpenLineSessionBySessionId(sessionId: string): Promise
       "OWNER_TYPE_ID",
       "OWNER_ID",
       "RESPONSIBLE_ID",
+      "COMPLETED",
     ],
     order: { CREATED: "DESC" },
     start: 0,
@@ -122,19 +175,9 @@ export async function findOpenLineSessionBySessionId(sessionId: string): Promise
   const row = (response.result as Array<Record<string, string>> | undefined)?.[0];
   if (!row) return null;
 
-  const subject = row.SUBJECT ?? "";
-  const { clientLabel, channel } = parseSubject(subject);
-  return {
-    activityId: String(row.ID),
-    sessionId: String(row.ASSOCIATED_ENTITY_ID ?? sessionId),
-    subject,
-    channel,
-    clientLabel,
-    created: row.CREATED ?? "",
-    ownerTypeId: String(row.OWNER_TYPE_ID ?? ""),
-    ownerId: String(row.OWNER_ID ?? ""),
-    responsibleId: String(row.RESPONSIBLE_ID ?? ""),
-  };
+  const session = activityToSession(row);
+  if (!session.sessionId) session.sessionId = sessionId;
+  return session;
 }
 
 function stripBbCode(text: string): string {
@@ -147,19 +190,59 @@ function stripBbCode(text: string): string {
     .trim();
 }
 
-function stripWazzupEnvelope(text: string): { text: string; hintedAuthor?: ChatAuthor } {
-  const embeddedOutgoing = text.match(/===\s*Исходящее сообщение[^=]*===\s*(.*)$/is);
-  if (embeddedOutgoing) return { text: embeddedOutgoing[1].trim(), hintedAuthor: "manager" };
+function stripInvisibleChars(text: string): string {
+  return text.replace(/[\u3164\u200b\uFEFF]/g, " ").replace(/\s+/g, " ").trim();
+}
 
-  const outgoing = text.match(/^===\s*Исходящее сообщение[^=]*===\s*(.*)$/is);
-  if (outgoing) return { text: outgoing[1].trim(), hintedAuthor: "manager" };
-  const incoming = text.match(/^===\s*Входящее сообщение[^=]*===\s*(.*)$/is);
-  if (incoming) return { text: incoming[1].trim(), hintedAuthor: "client" };
-  const outgoingEn = text.match(/^===\s*Outgoing message[^=]*===\s*(.*)$/is);
-  if (outgoingEn) return { text: outgoingEn[1].trim(), hintedAuthor: "manager" };
-  const incomingEn = text.match(/^===\s*Incoming message[^=]*===\s*(.*)$/is);
-  if (incomingEn) return { text: incomingEn[1].trim(), hintedAuthor: "client" };
-  return { text };
+const MANAGER_OUTGOING_PATTERNS = [
+  /я\s+менеджер\s+retro[- ]?pressa/i,
+  /спасибо,\s*что\s+оставили\s+заявку/i,
+  /с\s+удовольствием\s+поможем\s+подобрать/i,
+  /скажите,\s*дата\s+указана\s+верно/i,
+  /ваш\s+заказ\s+был\s+отправлен/i,
+  /оплату\s+получили/i,
+  /приступаем\s+к\s+обработке/i,
+  /высылаю\s+реквизиты/i,
+  /оплата\s+в\s+российских\s+рублях/i,
+  /жду\s+ответ\s+от\s+офиса/i,
+  /извините\s+за\s+долгий\s+ответ/i,
+  /желаю\s+скорейшего\s+выздоровления/i,
+  /как\s+только\s+заказ\s+будет\s+отправлен/i,
+];
+
+function looksLikeManagerOutgoing(text: string): boolean {
+  const normalized = stripInvisibleChars(text).toLowerCase();
+  if (!normalized) return false;
+  return MANAGER_OUTGOING_PATTERNS.some((p) => p.test(normalized));
+}
+
+function stripWazzupEnvelope(text: string): { text: string; hintedAuthor?: ChatAuthor; systemOnly?: boolean } {
+  if (/^===\s*SYSTEM\s+WZ\s*===/i.test(text.trim())) {
+    return { text: text.trim(), systemOnly: true };
+  }
+
+  let cleaned = stripInvisibleChars(text.split(/===\s*SYSTEM\s+WZ\s*===/i)[0] ?? text);
+
+  const embeddedOutgoing = cleaned.match(/^(.*?)===\s*Исходящее сообщение[^=]*===\s*(.*)$/is);
+  if (embeddedOutgoing) {
+    const body = stripInvisibleChars(embeddedOutgoing[2] ?? embeddedOutgoing[1] ?? "");
+    return { text: body, hintedAuthor: "manager" };
+  }
+
+  const outgoing = cleaned.match(/^===\s*Исходящее сообщение[^=]*===\s*(.*)$/is);
+  if (outgoing) return { text: stripInvisibleChars(outgoing[1]), hintedAuthor: "manager" };
+  const incoming = cleaned.match(/^===\s*Входящее сообщение[^=]*===\s*(.*)$/is);
+  if (incoming) return { text: stripInvisibleChars(incoming[1]), hintedAuthor: "client" };
+  const outgoingEn = cleaned.match(/^===\s*Outgoing message[^=]*===\s*(.*)$/is);
+  if (outgoingEn) return { text: stripInvisibleChars(outgoingEn[1]), hintedAuthor: "manager" };
+  const incomingEn = cleaned.match(/^===\s*Incoming message[^=]*===\s*(.*)$/is);
+  if (incomingEn) return { text: stripInvisibleChars(incomingEn[1]), hintedAuthor: "client" };
+
+  if (looksLikeManagerOutgoing(cleaned)) {
+    return { text: cleaned, hintedAuthor: "manager" };
+  }
+
+  return { text: cleaned };
 }
 
 function isNoiseMessage(text: string): boolean {
@@ -225,6 +308,10 @@ function isSystemMessage(msg: Record<string, unknown>, text: string): boolean {
     "link to original post",
     "ссылка на исходный пост",
     "wazzup24.com",
+    "=== system wz ===",
+    "пропущенный звонок от клиента",
+    "missed call from client",
+    "сейчас этому клиенту нельзя отправить шаблон",
     "crm's responsible person",
     "ответственного в crm",
   ];
@@ -235,6 +322,7 @@ function classifyAuthor(
   msg: Record<string, unknown>,
   senderId: string,
   responsibleId: string,
+  text: string,
   hinted?: ChatAuthor,
 ): ChatAuthor {
   if (hinted) return hinted;
@@ -242,6 +330,7 @@ function classifyAuthor(
 
   const params = msg.params as Record<string, unknown> | undefined;
   if (!params?.connectorMid) return "manager";
+  if (looksLikeManagerOutgoing(text)) return "manager";
   if (responsibleId && senderId === responsibleId) return "manager";
   return "client";
 }
@@ -257,9 +346,9 @@ function parseHistoryMessages(
   for (const msg of Object.values(bucket)) {
     const senderId = String(msg.senderid ?? msg.senderId ?? "");
     const rawText = stripBbCode(String(msg.text ?? msg.textlegacy ?? ""));
-    const { text, hintedAuthor } = stripWazzupEnvelope(rawText);
-    const system = isSystemMessage(msg, text);
-    const author: ChatAuthor = system ? "system" : classifyAuthor(msg, senderId, responsibleId, hintedAuthor);
+    const { text, hintedAuthor, systemOnly } = stripWazzupEnvelope(rawText);
+    const system = systemOnly || isSystemMessage(msg, text);
+    const author: ChatAuthor = system ? "system" : classifyAuthor(msg, senderId, responsibleId, text, hintedAuthor);
 
     if (!text || author === "system" || isNoiseMessage(text)) continue;
 

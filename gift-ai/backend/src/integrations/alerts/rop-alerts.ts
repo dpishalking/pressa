@@ -15,6 +15,8 @@ import {
   SMART_INVOICE_ENTITY_TYPE_ID,
 } from "../crm/bitrix-invoices.js";
 import { findOpenLineSessionBySessionId, fetchSessionChat, type OpenLineSession } from "../crm/bitrix-openlines.js";
+import { isLeadNewStatus, leadNeedsNoResponseAlert, LEAD_NEW_STATUS_ID } from "../crm/lead-no-response.js";
+import { isOpenLineSessionAlertable, isOpenLineSessionOpen } from "../crm/session-crm-status.js";
 import { loadFxConverter } from "../analytics/fx-rates.js";
 import { logger } from "../../logger.js";
 import { ropAlertsConfig, type RopAlertsConfig } from "./alerts-config.js";
@@ -119,11 +121,6 @@ async function leadAmountEur(lead: { OPPORTUNITY?: string; CURRENCY_ID?: string 
   return converter.convert(Number.parseFloat(lead.OPPORTUNITY ?? "0") || 0, lead.CURRENCY_ID);
 }
 
-async function isLeadUnprocessed(leadId: string): Promise<boolean> {
-  const leads = await listBitrixLeads({ ID: leadId, STATUS_SEMANTIC_ID: "P" }, ["ID"]);
-  return leads.length > 0;
-}
-
 async function resolveContactIdFromSession(session: {
   ownerTypeId: string;
   ownerId: string;
@@ -145,6 +142,8 @@ export async function scheduleLeadWatch(leadId: string, cfg?: RopAlertsConfig): 
   const settings = cfg ?? ropAlertsConfig();
   const lead = await getBitrixLeadById(leadId);
   if (!lead) return;
+
+  if (!isLeadNewStatus(lead)) return;
 
   if (!isWithinMaxAge(lead.DATE_CREATE, settings.leadMaxAgeDays)) return;
 
@@ -168,6 +167,8 @@ export async function scheduleChatWatch(
   const settings = opts.cfg ?? ropAlertsConfig();
   const session = await findOpenLineSessionBySessionId(sessionId);
   if (!session) return;
+  if (!isOpenLineSessionOpen(session)) return;
+  if (!(await isOpenLineSessionAlertable(session))) return;
 
   upsertWatch({
     watchType: "chat_no_response",
@@ -216,16 +217,14 @@ async function fireLeadNoResponseAlert(leadId: string, cfg: RopAlertsConfig, pay
   const eligible = cfg.telegramChatIds.filter((chatId) => subscriberWantsAlert(chatId, "leads"));
   if (allEligibleChatsDelivered(alertKey, eligible)) return;
 
-  const stillOpen = await isLeadUnprocessed(leadId);
-  if (!stillOpen) return;
+  const check = await leadNeedsNoResponseAlert(leadId, cfg.leadNoResponseMinutes);
+  if (!check.alert || !check.lead) return;
 
-  const lead = await getBitrixLeadById(leadId);
-  if (!lead) return;
-
+  const lead = check.lead;
   if (!isWithinMaxAge(lead.DATE_CREATE, cfg.leadMaxAgeDays)) return;
 
   const amountEur = Number(payload.amountEur) || (await leadAmountEur(lead, cfg));
-  const waitingMin = minutesBetween(lead.DATE_CREATE ?? "");
+  const waitingMin = check.waitingMinutes ?? minutesBetween(lead.DATE_CREATE ?? "");
   const managerIds = await resolveBitrixUserNames([String(lead.ASSIGNED_BY_ID ?? "")]);
   const manager = managerIds.get(String(lead.ASSIGNED_BY_ID ?? "")) ?? "не назначен";
 
@@ -374,6 +373,8 @@ async function fireChatNoResponseAlert(
 
   const session = await findOpenLineSessionBySessionId(sessionId);
   if (!session) return;
+  if (!isOpenLineSessionOpen(session)) return;
+  if (!(await isOpenLineSessionAlertable(session))) return;
 
   const stats = await fetchSessionChat(session);
   const clientMessages = stats.messages.filter((m) => m.author === "client");
@@ -521,6 +522,7 @@ export async function scanUnprocessedLeads(cfg?: RopAlertsConfig): Promise<void>
 
   const staleCutoff = hoursAgoIso(settings.leadNoResponseMinutes / 60);
   const filter: Record<string, unknown> = {
+    STATUS_ID: LEAD_NEW_STATUS_ID,
     STATUS_SEMANTIC_ID: "P",
     "<DATE_CREATE": staleCutoff,
   };
@@ -541,6 +543,10 @@ export async function scanUnprocessedLeads(cfg?: RopAlertsConfig): Promise<void>
   for (const lead of leads) {
     const amountEur = await leadAmountEur(lead, settings);
     if (settings.leadMinEur > 0 && amountEur < settings.leadMinEur) continue;
+
+    const check = await leadNeedsNoResponseAlert(String(lead.ID), settings.leadNoResponseMinutes);
+    if (!check.alert) continue;
+
     await fireLeadNoResponseAlert(String(lead.ID), settings, {
       amountEur,
       title: leadTitle(lead),
@@ -596,7 +602,7 @@ export async function handleBitrixWebhook(payload: BitrixWebhookPayload): Promis
       return { ok: true, handled: "lead_stale" };
     }
 
-    const unprocessed = await isLeadUnprocessed(leadId);
+    const unprocessed = isLeadNewStatus(lead);
     if (unprocessed) {
       await scheduleLeadWatch(leadId, cfg);
     } else {

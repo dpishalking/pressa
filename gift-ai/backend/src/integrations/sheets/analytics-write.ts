@@ -125,14 +125,21 @@ export const UNPAID_INVOICE_HEADERS = [
   "Телефон",
 ] as const;
 
-export const UNANSWERED_CHAT_HEADERS = [
+export const LOST_DIALOGUE_HEADERS = [
   "Сессия",
   "Канал",
   "Клиент",
+  "Сделка",
+  "Лид",
+  "Телефон",
   "Менеджер",
   "Ждёт (ч)",
+  "Дата в переписке",
   "Последнее сообщение",
 ] as const;
+
+/** @deprecated используйте LOST_DIALOGUE_HEADERS */
+export const UNANSWERED_CHAT_HEADERS = LOST_DIALOGUE_HEADERS;
 
 export const STALE_DEAL_HEADERS = [
   "Сделка",
@@ -145,6 +152,19 @@ export const STALE_DEAL_HEADERS = [
   "Телефон",
 ] as const;
 
+export const THINK_DEAL_HEADERS = [
+  "# Сделка",
+  "Название",
+  "# Сумма",
+  "Валюта",
+  "📅 Дата в сделке",
+  "📅 Дело до",
+  "# Просрочено (дн)",
+  "Проблема",
+  "👤 Менеджер",
+  "Телефон",
+] as const;
+
 export const UNPROCESSED_LEAD_HEADERS = [
   "Лид",
   "Название",
@@ -153,6 +173,30 @@ export const UNPROCESSED_LEAD_HEADERS = [
   "Создан",
   "Этап воронки",
   "Часов без обработки",
+  "Менеджер",
+  "Телефон",
+] as const;
+
+export const LEAD_IN_WORK_HEADERS = [
+  "Лид",
+  "Название",
+  "Источник",
+  "Страна",
+  "В работе с",
+  "Часов в работе",
+  "Менеджер",
+  "Телефон",
+] as const;
+
+export const DEAL_IN_DIALOGUE_HEADERS = [
+  "Сделка",
+  "Название",
+  "# Сумма",
+  "Валюта",
+  "Канал",
+  "Клиент",
+  "Часов без ответа",
+  "Последнее сообщение",
   "Менеджер",
   "Телефон",
 ] as const;
@@ -173,16 +217,37 @@ export function unpaidInvoicesTab(): string {
   return "Счета без оплаты";
 }
 
+export function lostDialoguesTab(): string {
+  return "Потерянные диалоги";
+}
+
+/** @deprecated используйте lostDialoguesTab */
 export function unansweredChatsTab(): string {
-  return "Чаты без ответа";
+  return lostDialoguesTab();
 }
 
 export function staleDealsTab(): string {
   return "Зависшие сделки";
 }
 
+export function thinkDealsTab(): string {
+  return "Я подумаю";
+}
+
+export function thinkDealsExpiredTab(): string {
+  return "Я подумаю закрыть";
+}
+
 export function unprocessedLeadsTab(): string {
   return "Необработанные лиды";
+}
+
+export function leadsInWorkTab(): string {
+  return "Лид в работе висит сутки";
+}
+
+export function dealsInDialogueTab(): string {
+  return "В диалоге без ответа сутки";
 }
 
 export function slowResponsesTab(): string {
@@ -726,6 +791,46 @@ export async function writeSheetContent(
       method: "PUT",
       headers: sheetsHeaders(token),
       body: JSON.stringify({ values }),
+    },
+    true,
+  );
+  const json = (await res.json()) as { error?: { message?: string } };
+  if (!res.ok) throw new Error(json.error?.message ?? `Write sheet failed: HTTP ${res.status}`);
+  return rows.length;
+}
+
+/** Обновляет только строки данных (со 2-й), не трогая шапку и форматирование таблицы. */
+export async function writeSheetDataOnly(
+  account: GoogleServiceAccount,
+  spreadsheetId: string,
+  tabTitle: string,
+  columnCount: number,
+  rows: SheetCell[][],
+): Promise<number> {
+  const token = await getGoogleAccessToken(account);
+  await prepareAnalyticsWorkbook(account, spreadsheetId, [{ title: tabTitle, headers: ["A"] }]);
+
+  const lastCol = columnLetter(columnCount);
+  const clearRange = encodeURIComponent(tabRange(tabTitle, "A2", `${lastCol}100000`));
+  const clearRes = await sheetsFetch(
+    `${SHEETS_API}/${spreadsheetId}/values/${clearRange}:clear`,
+    { method: "POST", headers: sheetsHeaders(token) },
+    true,
+  );
+  if (!clearRes.ok) {
+    const json = (await clearRes.json()) as { error?: { message?: string } };
+    throw new Error(json.error?.message ?? `Clear sheet failed: HTTP ${clearRes.status}`);
+  }
+
+  if (!rows.length) return 0;
+
+  const dataRange = encodeURIComponent(tabRange(tabTitle, "A2", `${lastCol}${rows.length + 1}`));
+  const res = await sheetsFetch(
+    `${SHEETS_API}/${spreadsheetId}/values/${dataRange}?valueInputOption=USER_ENTERED`,
+    {
+      method: "PUT",
+      headers: sheetsHeaders(token),
+      body: JSON.stringify({ values: rows }),
     },
     true,
   );

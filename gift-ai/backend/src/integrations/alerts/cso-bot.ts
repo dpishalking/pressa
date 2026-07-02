@@ -160,7 +160,7 @@ export async function handleCsoBotUpdate(update: TelegramUpdate): Promise<void> 
         "Настройте, что получать: /settings",
         "Справка по командам: /help",
         "",
-        "Приходят только новые сигналы — с момента входа.",
+        "Алерты по лидам приходят всем подписчикам. Остальные сигналы — только новые с момента входа.",
       ].join("\n"),
     );
     logger.info("CSO bot subscriber added", { chatId, username: message.from?.username });

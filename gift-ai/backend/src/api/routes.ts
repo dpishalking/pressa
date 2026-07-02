@@ -12,10 +12,12 @@ import { seedGifts } from "../seed.js";
 import { getBotStats, recordAnalyticsEvent, type AnalyticsEventType } from "../modules/analytics.js";
 import { getDb } from "../db/client.js";
 import { parseBitrixWebhookBody } from "../integrations/alerts/bitrix-webhook-parse.js";
-import { ropAlertsConfig, ropAlertsEnabled } from "../integrations/alerts/alerts-config.js";
+import { resolveTelegramChatIds, ropAlertsConfig, ropAlertsEnabled } from "../integrations/alerts/alerts-config.js";
 import { handleBitrixWebhook } from "../integrations/alerts/rop-alerts.js";
 import { handleCsoBotUpdate } from "../integrations/alerts/cso-bot.js";
 import { sendTelegramAlert, eur } from "../integrations/alerts/telegram-notify.js";
+import { listTelegramSubscriberDetails } from "../integrations/alerts/telegram-subscribers.js";
+import { getSubscriberSettings } from "../integrations/alerts/subscriber-settings.js";
 
 function verifyOutboundTokenEarly(token?: string): boolean {
   const expected = config.BITRIX24_OUTBOUND_TOKEN.trim();
@@ -415,14 +417,62 @@ admin.post("/rop-alerts/daily-digest", async (c) => {
   }
 });
 
+admin.get("/rop-alerts/subscribers", (c) => {
+  try {
+    if (!ropAlertsEnabled()) {
+      return c.json({ error: "ROP alerts не настроены" }, 400);
+    }
+    const chatIds = resolveTelegramChatIds();
+    const username = c.req.query("username")?.trim().replace(/^@/, "").toLowerCase();
+    const subscribers = listTelegramSubscriberDetails()
+      .map((sub) => ({
+        ...sub,
+        settings: getSubscriberSettings(sub.chatId),
+        receivesAlerts: chatIds.includes(sub.chatId),
+      }))
+      .filter((sub) => !username || sub.username.toLowerCase() === username);
+
+    return c.json({ chatIds, subscribers });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
+});
+
+admin.post("/rop-alerts/subscribers/:chatId/test", async (c) => {
+  try {
+    if (!ropAlertsEnabled()) {
+      return c.json({ error: "ROP alerts не настроены" }, 400);
+    }
+    const chatId = c.req.param("chatId");
+    const cfg = ropAlertsConfig();
+    if (!cfg.telegramChatIds.includes(chatId)) {
+      return c.json({ error: "chat_id не в списке получателей" }, 404);
+    }
+    const result = await sendTelegramAlert(cfg, [
+      "✅ Тест доставки CSO-бота",
+      "",
+      `Chat ID: ${chatId}`,
+      "Если видите это — бот может писать вам в личку.",
+    ].join("\n"));
+    return c.json({ ok: true, ...result });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
+});
+
 admin.post("/rop-alerts/run-checks", async (c) => {
   try {
     if (!ropAlertsEnabled()) {
       return c.json({ error: "ROP alerts не настроены" }, 400);
     }
-    const { processDueWatches, scanUnpaidInvoices } = await import("../integrations/alerts/rop-alerts.js");
+    const { processDueWatches, scanUnpaidInvoices, scanUnprocessedLeads } = await import(
+      "../integrations/alerts/rop-alerts.js"
+    );
     const cfg = ropAlertsConfig();
     const fired = await processDueWatches(cfg);
+    await scanUnprocessedLeads(cfg);
     await scanUnpaidInvoices(cfg);
     return c.json({ ok: true, fired });
   } catch (e) {

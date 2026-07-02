@@ -3,11 +3,14 @@ import type { RopAlertsConfig } from "./alerts-config.js";
 import { isWithinRopAlertWindow } from "./alert-hours.js";
 import { getTelegramSubscriber } from "./telegram-subscribers.js";
 import { subscriberWantsAlert, type AlertTypeKey } from "./subscriber-settings.js";
+import { markAlertDeliveredToChat, wasAlertDeliveredToChat } from "./alert-store.js";
 
 export type TelegramAlertSendResult = {
   delivered: boolean;
   /** Все подписчики подключились позже события — алерт больше не повторять. */
   skippedAll: boolean;
+  /** Все активные подписчики получили алерт (для per-subscriber доставки). */
+  allDelivered: boolean;
 };
 
 function isRelevantForSubscriber(chatId: string, relevantAt: string): boolean {
@@ -20,31 +23,44 @@ function isRelevantForSubscriber(chatId: string, relevantAt: string): boolean {
   return eventTs >= subTs;
 }
 
+function eligibleChatIds(cfg: RopAlertsConfig, alertType?: AlertTypeKey): string[] {
+  return cfg.telegramChatIds.filter((chatId) => !alertType || subscriberWantsAlert(chatId, alertType));
+}
+
 export async function sendTelegramAlert(
   cfg: RopAlertsConfig,
   text: string,
-  opts?: { relevantAt?: string; alertType?: AlertTypeKey },
+  opts?: {
+    relevantAt?: string;
+    alertType?: AlertTypeKey;
+    /** Уникальный ключ события — доставка отслеживается отдельно по каждому chat_id. */
+    alertKey?: string;
+    /** Не отсекать подписчиков, подключившихся после события (для лидов). */
+    ignoreSubscribedAt?: boolean;
+  },
 ): Promise<TelegramAlertSendResult> {
   if (!isWithinRopAlertWindow(cfg)) {
     logger.debug("ROP alert skipped outside Moscow hours", {
       from: cfg.alertFromHour,
       to: cfg.alertToHour,
     });
-    return { delivered: false, skippedAll: false };
+    return { delivered: false, skippedAll: false, allDelivered: false };
   }
 
   const token = cfg.telegramBotToken;
-  const chatIds = cfg.telegramChatIds;
-  if (!token || !chatIds.length) return { delivered: false, skippedAll: false };
+  const chatIds = eligibleChatIds(cfg, opts?.alertType);
+  if (!token || !chatIds.length) return { delivered: false, skippedAll: false, allDelivered: false };
 
   const relevantAt = opts?.relevantAt ?? new Date().toISOString();
   let delivered = false;
   let eligible = 0;
+  let pending = 0;
 
   for (const chatId of chatIds) {
-    if (!isRelevantForSubscriber(chatId, relevantAt)) continue;
-    if (opts?.alertType && !subscriberWantsAlert(chatId, opts.alertType)) continue;
+    if (!opts?.ignoreSubscribedAt && !isRelevantForSubscriber(chatId, relevantAt)) continue;
+    if (opts?.alertKey && wasAlertDeliveredToChat(opts.alertKey, chatId)) continue;
     eligible += 1;
+    pending += 1;
 
     try {
       const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
@@ -61,22 +77,34 @@ export async function sendTelegramAlert(
         throw new Error(json.description ?? `HTTP ${res.status}`);
       }
       delivered = true;
+      pending -= 1;
+      if (opts?.alertKey && opts.alertType) {
+        markAlertDeliveredToChat(opts.alertKey, chatId, opts.alertType);
+      }
     } catch (error) {
       logger.error("Telegram alert failed", {
         chatId,
+        alertKey: opts?.alertKey,
         error: error instanceof Error ? error.message : String(error),
       });
     }
   }
 
-  if (eligible === 0) {
-    return { delivered: false, skippedAll: true };
+  if (eligible === 0 && !opts?.ignoreSubscribedAt) {
+    return { delivered: false, skippedAll: true, allDelivered: false };
   }
-  return { delivered, skippedAll: false };
+
+  const allDelivered = opts?.alertKey ? pending === 0 && eligible > 0 : delivered;
+
+  return { delivered, skippedAll: false, allDelivered };
 }
 
 export function shouldFinalizeAlert(result: TelegramAlertSendResult): boolean {
   return result.delivered || result.skippedAll;
+}
+
+export function shouldFinalizePerSubscriberAlert(result: TelegramAlertSendResult): boolean {
+  return result.allDelivered;
 }
 
 /** Вечерний дайджест — вне окна дневных алертов, без фильтра subscribed_at. */

@@ -23,6 +23,29 @@ export function markAlertSent(alertKey: string, alertType: string): void {
 export function clearAlertSent(alertKey: string): void {
   const db = getDb();
   db.prepare("DELETE FROM rop_alert_sent WHERE alert_key = ?").run(alertKey);
+  db.prepare("DELETE FROM rop_alert_delivery WHERE alert_key = ?").run(alertKey);
+}
+
+export function wasAlertDeliveredToChat(alertKey: string, chatId: string): boolean {
+  const db = getDb();
+  const row = db
+    .prepare("SELECT alert_key FROM rop_alert_delivery WHERE alert_key = ? AND chat_id = ?")
+    .get(alertKey, chatId) as { alert_key: string } | undefined;
+  return Boolean(row);
+}
+
+export function markAlertDeliveredToChat(alertKey: string, chatId: string, alertType: string): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO rop_alert_delivery (alert_key, chat_id, alert_type, sent_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(alert_key, chat_id) DO UPDATE SET sent_at = excluded.sent_at`,
+  ).run(alertKey, chatId, alertType, new Date().toISOString());
+}
+
+export function allEligibleChatsDelivered(alertKey: string, chatIds: string[]): boolean {
+  if (!chatIds.length) return false;
+  return chatIds.every((chatId) => wasAlertDeliveredToChat(alertKey, chatId));
 }
 
 export function upsertWatch(opts: {

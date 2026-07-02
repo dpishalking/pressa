@@ -2,26 +2,8 @@ import { config } from "../../config.js";
 import { logger } from "../../logger.js";
 import type { LeadPayload } from "../../types/index.js";
 import { bandLabel } from "../../modules/lead-scoring.js";
+import { bitrixCall } from "./bitrix-client.js";
 import type { CrmAdapter, CrmLeadResult } from "./types.js";
-
-function webhookBase(): string {
-  const url = config.BITRIX24_WEBHOOK_URL.replace(/\/$/, "");
-  if (!url) throw new Error("BITRIX24_WEBHOOK_URL не настроен");
-  return url;
-}
-
-async function bitrixCall(method: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const res = await fetch(`${webhookBase()}/${method}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const json = (await res.json()) as Record<string, unknown>;
-  if (!res.ok || json.error) {
-    throw new Error(String(json.error_description ?? json.error ?? res.status));
-  }
-  return json;
-}
 
 export class Bitrix24Adapter implements CrmAdapter {
   readonly name = "bitrix24";

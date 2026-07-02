@@ -17,6 +17,8 @@ export const CANONICAL_PRODUCTS: CanonicalProduct[] = [
       "газета из дня рождения",
       "издание из важной даты",
       "газета из дня рождения / издание из важной даты",
+      "оригинальная газета",
+      "orģināla avīze",
     ],
   },
   {
@@ -26,6 +28,7 @@ export const CANONICAL_PRODUCTS: CanonicalProduct[] = [
       "книга жизни",
       "книга жизни в заголовках газет",
       "книга жизни / книга жизни в заголовках газет",
+      "dzīves grāmata avīžu virsrakstos",
     ],
   },
   {
@@ -36,12 +39,27 @@ export const CANONICAL_PRODUCTS: CanonicalProduct[] = [
       "персональная газета о человеке",
       "персонализированная газета",
       "partypagee",
+      "поздравительная газета",
+      "apsveikuma avīze",
+      "персонализированная газета - 8 страницы",
+      "персонализированная газета - 4 страницы",
+      "персонализированная газета - 12 страниц",
     ],
   },
   {
     externalId: "glossy-magazine",
     defaultName: "Именной глянцевый журнал",
-    aliases: ["глянцевый журнал о человеке", "именной глянцевый журнал", "глянцевый журнал"],
+    aliases: [
+      "глянцевый журнал о человеке",
+      "именной глянцевый журнал",
+      "глянцевый журнал",
+      "оригинальный журнал",
+      "oriģināls žurnāls",
+      "поздравительный журнал (остаток)",
+      "поздравительный журнал (аванс)",
+      "apsveikuma žurnāls (atlikums)",
+      "apsveikuma žurnāls (avanss)",
+    ],
   },
   {
     externalId: "memory-book",
@@ -101,4 +119,15 @@ export function canonicalExternalIds(): string[] {
 
 export function defaultNameForExternalId(externalId: string): string | null {
   return CANONICAL_PRODUCTS.find((p) => p.externalId === externalId)?.defaultName ?? null;
+}
+
+export const NO_PRODUCT_LABEL = "Без товара";
+
+/** Имя подарка для сводки: каноническое из каталога или как в CRM */
+export function displayProductName(rawName: string): string {
+  const trimmed = rawName.trim();
+  if (!trimmed) return NO_PRODUCT_LABEL;
+  const id = resolveProductExternalId(trimmed);
+  if (id) return defaultNameForExternalId(id) ?? trimmed;
+  return trimmed;
 }

@@ -15,16 +15,26 @@ export const INVOICE_STAGE_LOST = "DT31_2:D";
 /** @deprecated используйте INVOICE_STAGE_LOST */
 export const INVOICE_STAGE_UNPAID = INVOICE_STAGE_LOST;
 
-/** Сделка на стадии «Выставление счета» — ждём оплату, следующий шаг ещё не начат. */
+/** Сделка на стадии «Выставление счета» — классический сценарий ожидания оплаты. */
 export const INVOICE_PENDING_DEAL_STAGE_ID = "1";
+/** Самовывоз / оплата в офисе — сделка часто сразу в производстве, счёт всё равно ждёт оплаты. */
+export const DEAL_STAGE_PRODUCTION = "UC_SONEPG";
 
 export function isInvoiceAwaitingPayment(deal?: {
   STAGE_ID?: string;
   STAGE_SEMANTIC_ID?: string;
 } | null): boolean {
   if (!deal) return false;
+  // Исключаем только завершённые сделки (won/lost). Производство — не исключаем:
+  // при самовывозе сделка уже в производстве, но счёт ещё «отправлен» и не оплачен.
   if (deal.STAGE_SEMANTIC_ID === "S" || deal.STAGE_SEMANTIC_ID === "F") return false;
-  return deal.STAGE_ID === INVOICE_PENDING_DEAL_STAGE_ID;
+  return deal.STAGE_SEMANTIC_ID === "P";
+}
+
+/** Дата отправки счёта клиенту — movedTime при переходе в «Отправлено», иначе createdTime. */
+export function invoiceSentAt(invoice: { stageId?: string; movedTime?: string; createdTime?: string }): string {
+  if (invoice.stageId === INVOICE_STAGE_SENT && invoice.movedTime) return invoice.movedTime;
+  return invoice.createdTime ?? "";
 }
 
 export type InvoiceDateRange = {
@@ -40,6 +50,7 @@ export type BitrixInvoice = {
   currencyId?: string;
   parentDealId?: number;
   createdTime?: string;
+  movedTime?: string;
 };
 
 export type InvoiceCountryBucket = {
@@ -71,7 +82,7 @@ export async function listInvoicesCreatedInRange(range: InvoiceDateRange): Promi
         ">=createdTime": range.from,
         "<createdTime": range.to,
       },
-      select: ["id", "title", "stageId", "opportunity", "currencyId", "parentId2", "createdTime"],
+      select: ["id", "title", "stageId", "opportunity", "currencyId", "parentId2", "createdTime", "movedTime"],
       order: { createdTime: "ASC" },
       start,
     });
@@ -86,6 +97,7 @@ export async function listInvoicesCreatedInRange(range: InvoiceDateRange): Promi
         currencyId: row.currencyId != null ? String(row.currencyId) : undefined,
         parentDealId: row.parentId2 ? Number(row.parentId2) : undefined,
         createdTime: row.createdTime != null ? String(row.createdTime) : undefined,
+        movedTime: row.movedTime != null ? String(row.movedTime) : undefined,
       });
     }
 
@@ -98,13 +110,9 @@ export async function listInvoicesCreatedInRange(range: InvoiceDateRange): Promi
   return items;
 }
 
-/** Счета на стадии «Отправлено клиенту», опционально старше minDaysSinceCreated дней. */
-export async function listSentInvoices(minDaysSinceCreated = 0): Promise<BitrixInvoice[]> {
+/** Счета на стадии «Отправлено клиенту», опционально старше minDaysSinceSent дней с момента отправки. */
+export async function listSentInvoices(minDaysSinceSent = 0): Promise<BitrixInvoice[]> {
   const filter: Record<string, unknown> = { stageId: INVOICE_STAGE_SENT };
-  if (minDaysSinceCreated > 0) {
-    const cutoff = new Date(Date.now() - minDaysSinceCreated * 86_400_000).toISOString();
-    filter["<createdTime"] = cutoff;
-  }
 
   const items: BitrixInvoice[] = [];
   let start = 0;
@@ -113,7 +121,7 @@ export async function listSentInvoices(minDaysSinceCreated = 0): Promise<BitrixI
     const response = await bitrixCall("crm.item.list", {
       entityTypeId: SMART_INVOICE_ENTITY_TYPE_ID,
       filter,
-      select: ["id", "title", "stageId", "opportunity", "currencyId", "parentId2", "createdTime"],
+      select: ["id", "title", "stageId", "opportunity", "currencyId", "parentId2", "createdTime", "movedTime"],
       order: { createdTime: "ASC" },
       start,
     });
@@ -128,6 +136,7 @@ export async function listSentInvoices(minDaysSinceCreated = 0): Promise<BitrixI
         currencyId: row.currencyId != null ? String(row.currencyId) : undefined,
         parentDealId: row.parentId2 ? Number(row.parentId2) : undefined,
         createdTime: row.createdTime != null ? String(row.createdTime) : undefined,
+        movedTime: row.movedTime != null ? String(row.movedTime) : undefined,
       });
     }
 
@@ -137,7 +146,13 @@ export async function listSentInvoices(minDaysSinceCreated = 0): Promise<BitrixI
     await sleep(300);
   }
 
-  return items;
+  if (minDaysSinceSent <= 0) return items;
+
+  const cutoffMs = Date.now() - minDaysSinceSent * 86_400_000;
+  return items.filter((invoice) => {
+    const sentAt = Date.parse(invoiceSentAt(invoice));
+    return Number.isFinite(sentAt) && sentAt < cutoffMs;
+  });
 }
 
 /** @deprecated используйте listSentInvoices */
@@ -162,6 +177,7 @@ export async function getBitrixInvoiceById(id: number): Promise<BitrixInvoice | 
     currencyId: item.currencyId != null ? String(item.currencyId) : undefined,
     parentDealId: item.parentId2 ? Number(item.parentId2) : undefined,
     createdTime: item.createdTime != null ? String(item.createdTime) : undefined,
+    movedTime: item.movedTime != null ? String(item.movedTime) : undefined,
   };
 }
 

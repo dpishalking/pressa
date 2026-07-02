@@ -46,8 +46,7 @@ export function addTelegramSubscriber(opts: {
      VALUES (?, ?, ?, ?)
      ON CONFLICT(chat_id) DO UPDATE SET
        username = excluded.username,
-       first_name = excluded.first_name,
-       subscribed_at = excluded.subscribed_at`,
+       first_name = excluded.first_name`,
   ).run(opts.chatId, opts.username ?? "", opts.firstName ?? "", now);
 }
 

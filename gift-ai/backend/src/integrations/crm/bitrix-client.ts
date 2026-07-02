@@ -9,7 +9,7 @@ export function bitrixWebhookBase(): string {
 
 export async function bitrixCall(method: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
   let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       const res = await fetch(`${bitrixWebhookBase()}/${method}`, {
         method: "POST",
@@ -23,7 +23,10 @@ export async function bitrixCall(method: string, body: Record<string, unknown>):
       return json;
     } catch (error) {
       lastError = error;
-      if (attempt < 2) await sleep(1000 * (attempt + 1));
+      if (attempt >= 4) break;
+      const message = error instanceof Error ? error.message : String(error);
+      const rateLimited = /too many|query_limit|rate limit/i.test(message);
+      await sleep(rateLimited ? 5000 * (attempt + 1) : 1000 * (attempt + 1));
     }
   }
   throw lastError instanceof Error ? lastError : new Error(String(lastError));
@@ -56,8 +59,17 @@ export type BitrixEntity = {
   [key: string]: string | string[] | undefined;
 };
 
-export type BitrixLead = BitrixEntity;
-export type BitrixDeal = BitrixEntity;
+export type BitrixLead = BitrixEntity & {
+  STATUS_SEMANTIC_ID?: string;
+  CONTACT_ID?: string;
+  PHONE?: Array<{ VALUE?: string; VALUE_TYPE?: string }>;
+};
+
+export type BitrixDeal = BitrixEntity & {
+  STAGE_SEMANTIC_ID?: string;
+  CONTACT_ID?: string;
+  LEAD_ID?: string;
+};
 
 export type BitrixContact = BitrixEntity & {
   PHONE?: Array<{ VALUE?: string; VALUE_TYPE?: string }>;

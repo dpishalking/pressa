@@ -84,6 +84,17 @@ CREATE TABLE IF NOT EXISTS rop_alert_sent (
   sent_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS rop_alert_delivery (
+  alert_key TEXT NOT NULL,
+  chat_id TEXT NOT NULL,
+  alert_type TEXT NOT NULL,
+  sent_at TEXT NOT NULL,
+  PRIMARY KEY (alert_key, chat_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_rop_alert_delivery_key
+  ON rop_alert_delivery(alert_key);
+
 CREATE TABLE IF NOT EXISTS rop_alert_watch (
   id TEXT PRIMARY KEY,
   watch_type TEXT NOT NULL,
