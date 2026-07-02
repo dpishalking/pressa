@@ -43,14 +43,14 @@ const envSchema = z.object({
   BITRIX24_PORTAL_URL: z.string().optional().default(""),
   /** Мин. сумма лида для алерта; 0 = любой лид без ответа. */
   ROP_ALERT_LEAD_MIN_EUR: z.coerce.number().default(0),
-  ROP_ALERT_LEAD_NO_RESPONSE_MINUTES: z.coerce.number().default(30),
+  ROP_ALERT_LEAD_NO_RESPONSE_MINUTES: z.coerce.number().default(61),
   ROP_ALERT_CHAT_NO_RESPONSE_MINUTES: z.coerce.number().default(30),
   /** Не алертить по лидам старше N дней (0 = без лимита). */
   ROP_ALERT_LEAD_MAX_AGE_DAYS: z.coerce.number().default(7),
   /** Не алертить по чатам, где последнее сообщение клиента старше N дней. */
   ROP_ALERT_CHAT_MAX_AGE_DAYS: z.coerce.number().default(3),
   /** Часы отправки алертов по Москве (начало включительно, конец не включительно). */
-  ROP_ALERTS_FROM_HOUR_MSK: z.coerce.number().min(0).max(23).default(9),
+  ROP_ALERTS_FROM_HOUR_MSK: z.coerce.number().min(0).max(23).default(10),
   ROP_ALERTS_TO_HOUR_MSK: z.coerce.number().min(1).max(24).default(22),
   ROP_ALERT_INVOICE_MIN_EUR: z.coerce.number().default(0),
   ROP_ALERT_INVOICE_UNPAID_DAYS: z.coerce.number().default(2),

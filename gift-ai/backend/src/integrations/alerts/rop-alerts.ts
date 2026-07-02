@@ -88,6 +88,12 @@ function isoAfterMinutes(minutes: number): string {
   return new Date(Date.now() + minutes * 60_000).toISOString();
 }
 
+function isoAfterLeadNoResponse(createdIso: string | undefined, minutes: number): string {
+  const created = Date.parse(createdIso ?? "");
+  if (!Number.isFinite(created)) return isoAfterMinutes(minutes);
+  return new Date(created + minutes * 60_000).toISOString();
+}
+
 function isoAfterDays(days: number): string {
   return new Date(Date.now() + days * 86_400_000).toISOString();
 }
@@ -158,7 +164,7 @@ export async function scheduleLeadWatch(leadId: string, cfg?: RopAlertsConfig): 
   upsertWatch({
     watchType: "lead_no_response",
     entityId: leadId,
-    checkAfter: isoAfterMinutes(settings.leadNoResponseMinutes),
+    checkAfter: isoAfterLeadNoResponse(lead.DATE_CREATE, settings.leadNoResponseMinutes),
     payload: { amountEur, title: leadTitle(lead) },
   });
 
