@@ -1,7 +1,7 @@
 import { getDb } from "../../db/client.js";
 import { getTelegramSubscriber } from "./telegram-subscribers.js";
 
-export type AlertTypeKey = "leads" | "chats" | "invoices" | "payments" | "lost_deals" | "vip" | "daily_digest";
+export type AlertTypeKey = "leads" | "chats" | "invoices" | "invoice_sent" | "payments" | "lost_deals" | "vip" | "daily_digest";
 
 export type SubscriberSettings = {
   chatId: string;
@@ -10,6 +10,7 @@ export type SubscriberSettings = {
   leads: boolean;
   chats: boolean;
   invoices: boolean;
+  invoiceSent: boolean;
   payments: boolean;
   lostDeals: boolean;
   vip: boolean;
@@ -22,6 +23,7 @@ const DEFAULTS: Omit<SubscriberSettings, "chatId"> = {
   leads: true,
   chats: true,
   invoices: true,
+  invoiceSent: true,
   payments: true,
   lostDeals: true,
   vip: true,
@@ -35,6 +37,7 @@ function rowToSettings(row: {
   notify_leads: number;
   notify_chats: number;
   notify_invoices: number;
+  notify_invoice_sent: number;
   notify_payments: number;
   notify_lost_deals: number;
   notify_vip: number;
@@ -47,6 +50,7 @@ function rowToSettings(row: {
     leads: row.notify_leads !== 0,
     chats: row.notify_chats !== 0,
     invoices: row.notify_invoices !== 0,
+    invoiceSent: row.notify_invoice_sent !== 0,
     payments: row.notify_payments !== 0,
     lostDeals: row.notify_lost_deals !== 0,
     vip: row.notify_vip !== 0,
@@ -58,7 +62,7 @@ export function ensureSubscriberSettings(chatId: string): SubscriberSettings {
   const db = getDb();
   const existing = db
     .prepare(
-      `SELECT chat_id, active, paused_until, notify_leads, notify_chats, notify_invoices, notify_payments, notify_lost_deals, notify_vip, notify_daily_digest
+      `SELECT chat_id, active, paused_until, notify_leads, notify_chats, notify_invoices, notify_invoice_sent, notify_payments, notify_lost_deals, notify_vip, notify_daily_digest
        FROM rop_telegram_subscribers WHERE chat_id = ?`,
     )
     .get(chatId) as
@@ -69,6 +73,7 @@ export function ensureSubscriberSettings(chatId: string): SubscriberSettings {
         notify_leads: number;
         notify_chats: number;
         notify_invoices: number;
+        notify_invoice_sent: number;
         notify_payments: number;
         notify_lost_deals: number;
         notify_vip: number;
@@ -100,6 +105,7 @@ export function setSubscriberAlertToggle(chatId: string, key: AlertTypeKey, enab
     leads: "notify_leads",
     chats: "notify_chats",
     invoices: "notify_invoices",
+    invoice_sent: "notify_invoice_sent",
     payments: "notify_payments",
     lost_deals: "notify_lost_deals",
     vip: "notify_vip",
@@ -125,6 +131,8 @@ export function subscriberWantsAlert(chatId: string, alertType: AlertTypeKey): b
       return settings.chats;
     case "invoices":
       return settings.invoices;
+    case "invoice_sent":
+      return settings.invoiceSent;
     case "payments":
       return settings.payments;
     case "lost_deals":
