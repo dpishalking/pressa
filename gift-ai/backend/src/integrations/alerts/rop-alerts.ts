@@ -20,7 +20,7 @@ import {
   SMART_INVOICE_ENTITY_TYPE_ID,
 } from "../crm/bitrix-invoices.js";
 import { findOpenLineSessionBySessionId, fetchSessionChat, type OpenLineSession } from "../crm/bitrix-openlines.js";
-import { isLeadNewStatus, leadNeedsNoResponseAlert, LEAD_NEW_STATUS_ID } from "../crm/lead-no-response.js";
+import { isLeadNewStatus, isLeadEligibleForNoResponseAlert, leadNeedsNoResponseAlert, LEAD_NEW_STATUS_ID } from "../crm/lead-no-response.js";
 import { isOpenLineSessionAlertable, isOpenLineSessionOpen } from "../crm/session-crm-status.js";
 import { loadFxConverter } from "../analytics/fx-rates.js";
 import { logger } from "../../logger.js";
@@ -155,6 +155,8 @@ export async function scheduleLeadWatch(leadId: string, cfg?: RopAlertsConfig): 
   if (!lead) return;
 
   if (!isLeadNewStatus(lead)) return;
+
+  if (!(await isLeadEligibleForNoResponseAlert(leadId))) return;
 
   if (!isWithinMaxAge(lead.DATE_CREATE, settings.leadMaxAgeDays)) return;
 

@@ -15,7 +15,7 @@ import { listSentInvoices, isInvoiceAwaitingPayment, invoiceSentAt, type BitrixI
 import { fetchSessionChat, findLatestOpenLineSessionForOwners, listOpenLineSessions } from "./bitrix-openlines.js";
 import { buildLostDialogueRow, type LostDialogueRow } from "./lost-dialogue.js";
 import { LEAD_IN_WORK_STATUS_ID, leadTakenInWorkAt, listLeadOpenContactTodos, hasNonOverdueContactTask, type LeadInWorkRow } from "./lead-in-work.js";
-import { LEAD_NEW_STATUS_ID, managerRepliedToLeadInChat } from "./lead-no-response.js";
+import { LEAD_NEW_STATUS_ID, isLeadEligibleForNoResponseAlert, managerRepliedToLeadInChat } from "./lead-no-response.js";
 import {
   clientWaitingSince,
   DEAL_STAGE_IN_DIALOG,
@@ -43,10 +43,8 @@ import { loadFxConverter, type FxConverter } from "../analytics/fx-rates.js";
 import { logger } from "../../logger.js";
 
 export type ActionListsThresholds = {
-  chatWindowDays: number;
   dealStaleDays: number;
   leadUnprocessedHours: number;
-  slowResponseMinutes: number;
   invoiceSentMinDays: number;
   /** Окно поиска потерянных диалогов (дней назад). */
   lostDialogueWindowDays: number;
@@ -65,10 +63,8 @@ export type ActionListsThresholds = {
 };
 
 export const DEFAULT_THRESHOLDS: ActionListsThresholds = {
-  chatWindowDays: 3,
   dealStaleDays: 3,
   leadUnprocessedHours: 6,
-  slowResponseMinutes: 30,
   invoiceSentMinDays: 2,
   lostDialogueWindowDays: 14,
   lostDialogueMinHours: 2,
@@ -138,14 +134,6 @@ export type UnprocessedLeadRow = {
 
 export type { LeadInWorkRow, DealInDialogueRow };
 
-export type SlowResponseRow = {
-  sessionId: string;
-  channel: string;
-  managerName: string;
-  firstResponseMinutes: number;
-  sessionDate: string;
-};
-
 export type DailySummary = {
   updatedAt: string;
   unpaidInvoicesCount: number;
@@ -159,8 +147,6 @@ export type DailySummary = {
   unprocessedLeadsCount: number;
   leadsInWorkStaleCount: number;
   dealsInDialogueStaleCount: number;
-  slowResponsesCount: number;
-  avgFirstResponseMinutes: number;
   yesterdayLeads: number;
   yesterdaySessions: number;
   yesterdayDeals: number;
@@ -177,7 +163,6 @@ export type ActionListsResult = {
   unprocessedLeads: UnprocessedLeadRow[];
   leadsInWorkStale: LeadInWorkRow[];
   dealsInDialogueStale: DealInDialogueRow[];
-  slowResponses: SlowResponseRow[];
 };
 
 function sleep(ms: number): Promise<void> {
@@ -531,6 +516,12 @@ async function buildUnprocessedLeads(
       continue;
     }
 
+    if (!(await isLeadEligibleForNoResponseAlert(leadId))) {
+      onProgress?.(i + 1, leads.length);
+      if (i + 1 < leads.length) await sleep(120);
+      continue;
+    }
+
     const contactId = String(lead.CONTACT_ID ?? "");
     const contact = contactId ? contacts.get(contactId) : undefined;
     const phone = phoneFromLead(lead) || phoneFromContact(contact);
@@ -653,53 +644,6 @@ async function buildDealsInDialogueStale(
   return rows.sort((a, b) => b.waitingHours - a.waitingHours);
 }
 
-async function scanRecentSessions(
-  range: ExportDateRange,
-  users: Map<string, string>,
-  thresholds: ActionListsThresholds,
-  onProgress?: (done: number, total: number) => void,
-): Promise<{ slow: SlowResponseRow[]; avgFirstResponse: number }> {
-  const sessions = await listOpenLineSessions(range);
-  const slow: SlowResponseRow[] = [];
-  const responseTimes: number[] = [];
-  const crmCache = new SessionCrmCache();
-
-  for (let i = 0; i < sessions.length; i++) {
-    const session = sessions[i]!;
-    if (!isOpenLineSessionOpen(session)) continue;
-    if (!(await isOpenLineSessionAlertable(session, crmCache))) continue;
-
-    const stats = await fetchSessionChat(session);
-    const managerMessages = stats.messages.filter((m) => m.author === "manager");
-    const managerName = users.get(session.responsibleId) ?? session.responsibleId;
-
-    if (stats.firstResponseMinutes != null) {
-      responseTimes.push(stats.firstResponseMinutes);
-      if (stats.firstResponseMinutes > thresholds.slowResponseMinutes) {
-        slow.push({
-          sessionId: session.sessionId,
-          channel: session.channel,
-          managerName,
-          firstResponseMinutes: stats.firstResponseMinutes,
-          sessionDate: session.created.slice(0, 10),
-        });
-      }
-    }
-
-    onProgress?.(i + 1, sessions.length);
-    if (i + 1 < sessions.length) await sleep(100);
-  }
-
-  slow.sort((a, b) => b.firstResponseMinutes - a.firstResponseMinutes);
-
-  const avgFirstResponse =
-    responseTimes.length
-      ? Math.round(responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length)
-      : 0;
-
-  return { slow, avgFirstResponse };
-}
-
 async function scanLostDialogues(
   range: ExportDateRange,
   users: Map<string, string>,
@@ -770,7 +714,6 @@ export async function buildUnprocessedLeadsList(opts?: {
     unansweredChats: [],
     thinkDeals: [],
     thinkDealsExpired: [],
-    slowResponses: [],
   });
 
   return rows;
@@ -793,7 +736,6 @@ export async function buildLostDialoguesList(opts?: {
     unansweredChats: rows,
     thinkDeals: [],
     thinkDealsExpired: [],
-    slowResponses: [],
   });
   return rows;
 }
@@ -820,7 +762,6 @@ async function enrichManagerNames(result: {
   unansweredChats: UnansweredChatRow[];
   thinkDeals: ThinkDealRow[];
   thinkDealsExpired: ThinkDealRow[];
-  slowResponses: SlowResponseRow[];
 }): Promise<void> {
   const ids = new Set<string>();
   const maybeId = (value: string) => {
@@ -835,7 +776,6 @@ async function enrichManagerNames(result: {
   for (const row of result.unansweredChats) maybeId(row.managerName);
   for (const row of result.thinkDeals) maybeId(row.managerName);
   for (const row of result.thinkDealsExpired) maybeId(row.managerName);
-  for (const row of result.slowResponses) maybeId(row.managerName);
 
   const names = await resolveBitrixUserNames([...ids]);
   const label = (value: string) => (names.get(value) ?? value);
@@ -848,7 +788,6 @@ async function enrichManagerNames(result: {
   for (const row of result.unansweredChats) row.managerName = label(row.managerName);
   for (const row of result.thinkDeals) row.managerName = label(row.managerName);
   for (const row of result.thinkDealsExpired) row.managerName = label(row.managerName);
-  for (const row of result.slowResponses) row.managerName = label(row.managerName);
 }
 
 export async function buildActionLists(opts: {
@@ -858,7 +797,6 @@ export async function buildActionLists(opts: {
 }): Promise<ActionListsResult> {
   const thresholds = opts.thresholds ?? DEFAULT_THRESHOLDS;
   const yesterday = yesterdayRange();
-  const chatRange = recentDaysRange(thresholds.chatWindowDays);
   const lostDialogueRange = recentDaysRange(thresholds.lostDialogueWindowDays);
 
   const [sourceLabels, stageLabels, leadStatusLabels, leadFields] = await Promise.all([
@@ -998,13 +936,6 @@ export async function buildActionLists(opts: {
     }
   }
 
-  const { slow, avgFirstResponse } = await scanRecentSessions(
-    chatRange,
-    users,
-    thresholds,
-    (done, total) => opts.onProgress?.("chats", done, total),
-  );
-
   const lostDialogues = await scanLostDialogues(
     lostDialogueRange,
     users,
@@ -1021,7 +952,6 @@ export async function buildActionLists(opts: {
     leadsInWorkStale,
     dealsInDialogueStale,
     unansweredChats: lostDialogues,
-    slowResponses: slow,
   };
   await enrichManagerNames(partial);
 
@@ -1044,8 +974,6 @@ export async function buildActionLists(opts: {
     unprocessedLeadsCount: unprocessedLeads.length,
     leadsInWorkStaleCount: leadsInWorkStale.length,
     dealsInDialogueStaleCount: dealsInDialogueStale.length,
-    slowResponsesCount: slow.length,
-    avgFirstResponseMinutes: avgFirstResponse,
     yesterdayLeads: yesterdayLeads.length,
     yesterdaySessions: yesterdaySessions.length,
     yesterdayDeals: yesterdayDeals.length,
@@ -1063,7 +991,6 @@ export async function buildActionLists(opts: {
     leads: summary.unprocessedLeadsCount,
     leadsInWork: summary.leadsInWorkStaleCount,
     dealsInDialogue: summary.dealsInDialogueStaleCount,
-    slow: summary.slowResponsesCount,
   });
 
   return {
@@ -1076,6 +1003,5 @@ export async function buildActionLists(opts: {
     unprocessedLeads,
     leadsInWorkStale,
     dealsInDialogueStale,
-    slowResponses: slow,
   };
 }

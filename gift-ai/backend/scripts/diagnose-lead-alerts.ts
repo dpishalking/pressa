@@ -1,11 +1,11 @@
 import { ropAlertsConfig, ropAlertsEnabled } from "../src/integrations/alerts/alerts-config.js";
+import { LEAD_IN_WORK_STATUS_ID, leadTakenInWorkAt } from "../src/integrations/crm/lead-in-work.js";
 import { LEAD_NEW_STATUS_ID, leadNeedsNoResponseAlert } from "../src/integrations/crm/lead-no-response.js";
 import {
   listBitrixLeads,
   listBitrixStatusLabels,
   resolveBitrixUserNames,
 } from "../src/integrations/crm/bitrix-client.js";
-import { LEAD_IN_WORK_STATUS_ID, leadTakenInWorkAt } from "../src/integrations/crm/lead-in-work.js";
 import { findLatestOpenLineSessionForOwners, fetchSessionChat } from "../src/integrations/crm/bitrix-openlines.js";
 
 function hoursAgoIso(hours: number): string {
@@ -75,8 +75,10 @@ async function main(): Promise<void> {
     const session = await findLatestOpenLineSessionForOwners([{ ownerTypeId: "1", ownerId: leadId }]);
     let chatSummary = "нет чата";
     let managerRepliedInChat = false;
+    let instagramComment = false;
     if (session) {
       const stats = await fetchSessionChat(session);
+      instagramComment = stats.instagramPostComment;
       const clientMsgs = stats.messages.filter((m) => m.author === "client");
       const managerMsgs = stats.messages.filter((m) => m.author === "manager");
       const lastClient = clientMsgs.at(-1);
@@ -94,7 +96,9 @@ async function main(): Promise<void> {
     const check = await leadNeedsNoResponseAlert(leadId, cfg.leadNoResponseMinutes);
 
     let verdict: string;
-    if (!check.alert && statusId !== LEAD_NEW_STATUS_ID) {
+    if (!check.alert && check.skipReason === "instagram_comment") {
+      verdict = "❌ SKIP: комментарий Instagram без запроса о покупке";
+    } else if (!check.alert && statusId !== LEAD_NEW_STATUS_ID) {
       verdict = `❌ SKIP: статус «${statusName}» — не NEW`;
     } else if (!check.alert && managerRepliedInChat) {
       verdict = "❌ SKIP: менеджер уже ответил в чате";
@@ -109,7 +113,7 @@ async function main(): Promise<void> {
     console.log(`Статус: ${statusName} (${statusId}) | Менеджер: ${manager}`);
     console.log(`Создан: ${lead.DATE_CREATE?.slice(0, 16)} (${waitFromCreate} мин назад)`);
     if (takenAt) console.log(`В работе с: ${takenAt.slice(0, 16)} (${waitInWork}ч)`);
-    console.log(`Чат: ${chatSummary}`);
+    console.log(`Чат: ${chatSummary}${instagramComment ? " [комментарий к посту IG]" : ""}`);
     console.log(`VERDICT: ${verdict}`);
   }
 }
