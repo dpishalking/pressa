@@ -4,13 +4,16 @@
   "workspaces": [
     "backend",
     "telegram-bot",
+    "trainer-bot",
     "dashboard"
   ],
   "scripts": {
     "dev": "npm run dev -w backend",
     "dev:dashboard": "npm run dev -w dashboard",
     "dev:bot": "npm run dev -w telegram-bot",
-    "build": "npm run build -w backend && npm run build -w telegram-bot && npm run build -w dashboard",
+    "dev:trainer": "npm run dev -w trainer-bot",
+    "build": "npm run build -w backend && npm run build -w trainer-bot && npm run build -w dashboard",
+    "build:trainer": "npm run build -w trainer-bot",
     "start": "npm run start -w backend",
     "seed": "npm run seed -w backend"
   }

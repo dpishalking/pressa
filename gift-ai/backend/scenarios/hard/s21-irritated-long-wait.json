@@ -1,0 +1,81 @@
+{
+  "id": "s21-irritated-long-wait",
+  "name": "Клиент раздражён долгим ответом",
+  "description": "Клиент уже ждал и раздражён. Менеджер должен исправить ситуацию быстро и профессионально.",
+  "mode": "mode_a",
+  "difficulty": "hard",
+  "trainingSkill": "empathy",
+  "buyerProfile": {
+    "gender": "male",
+    "ageRange": "35-45",
+    "country": "Россия",
+    "city": "Москва",
+    "language": "ru",
+    "personality": "занятой, ценит своё время, не терпит промедлений",
+    "urgencyLevel": "high"
+  },
+  "recipientProfile": {
+    "relation": "жена",
+    "ageRange": "38",
+    "interests": ["литература", "театр"],
+    "personality": "образованная, ценит красивые вещи"
+  },
+  "occasion": "день рождения",
+  "initialMessage": "Я уже 40 минут жду ответа! Это нормально вообще? Я спросил про наличие газеты за 1987 год!",
+  "hiddenFacts": [
+    "Жена родилась 5 декабря 1987 года",
+    "День рождения послезавтра",
+    "Доставка в Москву — нужна срочная",
+    "Бюджет €80",
+    "Готов купить немедленно если всё чётко",
+    "Злится на задержку, но подарок всё ещё нужен"
+  ],
+  "factsAvailableInitially": [
+    "Раздражён долгим ожиданием",
+    "Спрашивал про газету за 1987 год"
+  ],
+  "primaryObjection": {
+    "type": "irritation",
+    "text": "Сколько ещё ждать? Мне нужен конкретный ответ",
+    "hiddenReason": "Нужна скорость, а не оправдания"
+  },
+  "secondaryObjections": [],
+  "purchaseConditions": [
+    "Менеджер извинился кратко и без оправданий",
+    "Менеджер сразу дал конкретный ответ",
+    "Менеджер уточнил точную дату рождения жены",
+    "Менеджер решил вопрос быстро"
+  ],
+  "failureConditions": [
+    "Менеджер начал оправдываться долго",
+    "Менеджер не дал конкретного ответа"
+  ],
+  "initialClientState": {
+    "interest": 70,
+    "trust": 20,
+    "clarity": 30,
+    "emotionalFit": 30,
+    "urgency": 90,
+    "priceAcceptance": 70,
+    "readinessToBuy": 50,
+    "irritation": 70,
+    "choiceOverload": 0
+  },
+  "stateThresholds": {
+    "trustMin": 55,
+    "clarityMin": 70,
+    "emotionalFitMin": 50,
+    "readinessToBuyMin": 70,
+    "irritationMax": 60
+  },
+  "idealDialogueStages": [
+    "Кратко извиниться",
+    "Сразу дать конкретный ответ",
+    "Уточнить точную дату",
+    "Предложить срочную доставку",
+    "Назвать полную стоимость",
+    "Сразу предложить оформить"
+  ],
+  "isPublished": true,
+  "sourceType": "manual"
+}

@@ -1,0 +1,80 @@
+{
+  "id": "s22-competitor",
+  "name": "Клиент сравнивает с конкурентом",
+  "description": "Клиент нашёл похожий товар дешевле у конкурента. Нужно объяснить преимущества без критики конкурента.",
+  "mode": "mode_a",
+  "difficulty": "hard",
+  "trainingSkill": "objectionHandling",
+  "buyerProfile": {
+    "gender": "female",
+    "ageRange": "30-40",
+    "country": "Россия",
+    "city": "Самара",
+    "language": "ru",
+    "personality": "практичная, сравнивает предложения",
+    "urgencyLevel": "medium"
+  },
+  "recipientProfile": {
+    "relation": "папа",
+    "ageRange": "58",
+    "interests": ["история", "политика"],
+    "personality": "образованный, знает цену вещам"
+  },
+  "occasion": "день рождения",
+  "initialMessage": "Я нашла похожую газету на другом сайте, там дешевле на 30%. Почему у вас дороже?",
+  "hiddenFacts": [
+    "Папа родился 4 февраля 1967 года",
+    "День рождения через 2 недели",
+    "Доставка в Самару",
+    "Бюджет около €60",
+    "Видела репродукцию у конкурента — сравнивает с оригиналом у нас",
+    "Если объяснить разницу — предпочтёт нас"
+  ],
+  "factsAvailableInitially": [
+    "Нашла дешевле у конкурента",
+    "Спрашивает про разницу в цене"
+  ],
+  "primaryObjection": {
+    "type": "competitor",
+    "text": "Там то же самое, но дешевле. Зачем платить больше?",
+    "hiddenReason": "Сравнивает разные продукты (оригинал vs репродукция), не понимает разницу"
+  },
+  "secondaryObjections": [],
+  "purchaseConditions": [
+    "Менеджер уточнил, что именно у конкурента (репродукция или оригинал)",
+    "Менеджер объяснил разницу без критики конкурента",
+    "Менеджер показал ценность своего продукта",
+    "Менеджер уточнил дату рождения папы"
+  ],
+  "failureConditions": [
+    "Менеджер критиковал конкурента",
+    "Менеджер не разобрался, что именно у конкурента"
+  ],
+  "initialClientState": {
+    "interest": 65,
+    "trust": 40,
+    "clarity": 30,
+    "emotionalFit": 35,
+    "urgency": 40,
+    "priceAcceptance": 40,
+    "readinessToBuy": 40,
+    "irritation": 15,
+    "choiceOverload": 20
+  },
+  "stateThresholds": {
+    "trustMin": 60,
+    "clarityMin": 70,
+    "emotionalFitMin": 55,
+    "readinessToBuyMin": 65,
+    "irritationMax": 45
+  },
+  "idealDialogueStages": [
+    "Уточнить, что именно предлагает конкурент",
+    "Объяснить разницу корректно",
+    "Показать ценность своего продукта",
+    "Уточнить дату рождения",
+    "Дать рекомендацию"
+  ],
+  "isPublished": true,
+  "sourceType": "manual"
+}

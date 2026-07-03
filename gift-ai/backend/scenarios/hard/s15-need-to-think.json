@@ -1,0 +1,80 @@
+{
+  "id": "s15-need-to-think",
+  "name": "Мне нужно подумать",
+  "description": "Клиент говорит, что подумает. Менеджер должен выяснить реальную причину и помочь принять решение.",
+  "mode": "mode_a",
+  "difficulty": "hard",
+  "trainingSkill": "objectionHandling",
+  "buyerProfile": {
+    "gender": "female",
+    "ageRange": "38-48",
+    "country": "Россия",
+    "city": "Уфа",
+    "language": "ru",
+    "personality": "осторожная, перегружена информацией",
+    "urgencyLevel": "medium"
+  },
+  "recipientProfile": {
+    "relation": "папа",
+    "ageRange": "65",
+    "interests": ["советская история", "военные фильмы"],
+    "personality": "ностальгирует по прошлому"
+  },
+  "occasion": "65-летие",
+  "initialMessage": "Спасибо за информацию. Хорошо, я подумаю и напишу позже.",
+  "hiddenFacts": [
+    "Папа родился 3 сентября 1960 года",
+    "Юбилей через 10 дней — срочно",
+    "Доставка в Уфу — нужно уточнить срок",
+    "Бюджет есть, но менеджер дал слишком много вариантов",
+    "Клиент в растерянности от количества вариантов",
+    "Если сократить до одного варианта — купит"
+  ],
+  "factsAvailableInitially": [
+    "Говорит, что подумает"
+  ],
+  "primaryObjection": {
+    "type": "need_to_think",
+    "text": "Я подумаю. Спасибо",
+    "hiddenReason": "Слишком много вариантов, непонятно что выбрать, нет срочности"
+  },
+  "secondaryObjections": [],
+  "purchaseConditions": [
+    "Менеджер уточнил реальную причину 'подумаю'",
+    "Менеджер сократил выбор до одного варианта",
+    "Менеджер уточнил дедлайн и объяснил срочность",
+    "Менеджер не давил"
+  ],
+  "failureConditions": [
+    "Менеджер написал 'Хорошо, жду'",
+    "Менеджер добавил ещё варианты",
+    "Менеджер применил давление"
+  ],
+  "initialClientState": {
+    "interest": 55,
+    "trust": 45,
+    "clarity": 25,
+    "emotionalFit": 40,
+    "urgency": 25,
+    "priceAcceptance": 50,
+    "readinessToBuy": 30,
+    "irritation": 10,
+    "choiceOverload": 60
+  },
+  "stateThresholds": {
+    "trustMin": 55,
+    "clarityMin": 65,
+    "emotionalFitMin": 55,
+    "readinessToBuyMin": 60,
+    "irritationMax": 50
+  },
+  "idealDialogueStages": [
+    "Выяснить реальную причину",
+    "Сократить до одного варианта",
+    "Уточнить дедлайн",
+    "Назвать безопасный срок заказа",
+    "Предложить конкретный следующий шаг"
+  ],
+  "isPublished": true,
+  "sourceType": "manual"
+}

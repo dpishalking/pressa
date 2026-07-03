@@ -9,9 +9,22 @@ import { logger } from "./logger.js";
 import { seedGifts } from "./seed.js";
 import { startRopAlertsWorker } from "./integrations/alerts/alert-worker.js";
 import { syncCsoBotWebhook, syncCsoBotCommands } from "./integrations/alerts/cso-bot.js";
+import { initTrainingDb } from "./training/db.js";
+import { loadScenariosFromFiles, upsertScenariosToDb } from "./training/scenario-loader.js";
 
 getDb();
 seedGifts();
+initTrainingDb();
+
+try {
+  const scenarios = loadScenariosFromFiles();
+  if (scenarios.length > 0) {
+    upsertScenariosToDb(scenarios);
+    logger.info("Training scenarios loaded", { count: scenarios.length });
+  }
+} catch (e) {
+  logger.warn("Failed to load training scenarios", { error: String(e) });
+}
 
 if (sheetSyncEnabled()) {
   syncGiftsFromConfig(sheetSyncConfig())

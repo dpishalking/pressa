@@ -1,0 +1,80 @@
+{
+  "id": "s16-come-back-later",
+  "name": "Вернусь позже",
+  "description": "Клиент откладывает покупку. Менеджер должен создать срочность без давления.",
+  "mode": "mode_a",
+  "difficulty": "hard",
+  "trainingSkill": "closing",
+  "buyerProfile": {
+    "gender": "female",
+    "ageRange": "30-40",
+    "country": "Россия",
+    "city": "Воронеж",
+    "language": "ru",
+    "personality": "откладывает решения, нет ощущения срочности",
+    "urgencyLevel": "low"
+  },
+  "recipientProfile": {
+    "relation": "муж",
+    "ageRange": "38",
+    "interests": ["спорт", "советская эпоха"],
+    "personality": "активный, любит неожиданные подарки"
+  },
+  "occasion": "день рождения",
+  "initialMessage": "Интересно, но я сначала посмотрю ещё варианты и вернусь к вам",
+  "hiddenFacts": [
+    "Муж родился 15 ноября 1987 года",
+    "День рождения через 12 дней",
+    "Доставка в Воронеж (3-5 дней)",
+    "Бюджет есть",
+    "Уже смотрела другие варианты — ничего не нашла",
+    "Если объяснить крайний срок заказа — купит сейчас"
+  ],
+  "factsAvailableInitially": [
+    "Хочет посмотреть другие варианты",
+    "Вернётся позже"
+  ],
+  "primaryObjection": {
+    "type": "return_later",
+    "text": "Я ещё не решила. Может, вернусь",
+    "hiddenReason": "Нет ощущения срочности, не знает, что есть дедлайн заказа"
+  },
+  "secondaryObjections": [],
+  "purchaseConditions": [
+    "Менеджер уточнил дату дня рождения мужа",
+    "Менеджер объяснил крайний срок заказа",
+    "Менеджер предложил сохранить подборку",
+    "Менеджер не применял давление"
+  ],
+  "failureConditions": [
+    "Менеджер написал 'Хорошо, ждём'",
+    "Менеджер давил или запугивал сроками"
+  ],
+  "initialClientState": {
+    "interest": 50,
+    "trust": 45,
+    "clarity": 35,
+    "emotionalFit": 35,
+    "urgency": 15,
+    "priceAcceptance": 55,
+    "readinessToBuy": 30,
+    "irritation": 0,
+    "choiceOverload": 20
+  },
+  "stateThresholds": {
+    "trustMin": 55,
+    "clarityMin": 65,
+    "emotionalFitMin": 55,
+    "readinessToBuyMin": 60,
+    "irritationMax": 45
+  },
+  "idealDialogueStages": [
+    "Уточнить точную дату дня рождения",
+    "Рассчитать крайний срок заказа",
+    "Объяснить спокойно, без давления",
+    "Предложить сохранить подборку",
+    "Предложить написать, когда будет готова"
+  ],
+  "isPublished": true,
+  "sourceType": "manual"
+}

@@ -1,0 +1,78 @@
+{
+  "id": "s31-israel",
+  "name": "Доставка в Израиль",
+  "description": "Клиент из Израиля. Особенности доставки и оплаты. Нужен правильный язык издания.",
+  "mode": "mode_a",
+  "difficulty": "medium",
+  "trainingSkill": "pricing",
+  "buyerProfile": {
+    "gender": "female",
+    "ageRange": "45-55",
+    "country": "Израиль",
+    "city": "Хайфа",
+    "language": "ru",
+    "personality": "спокойная, организованная",
+    "urgencyLevel": "medium"
+  },
+  "recipientProfile": {
+    "relation": "муж",
+    "ageRange": "60",
+    "interests": ["история СССР", "политика"],
+    "personality": "репатриант, ностальгирует по советскому прошлому"
+  },
+  "occasion": "60-летие",
+  "initialMessage": "Добрый день. Я в Израиле. Хочу заказать мужу советскую газету на 60 лет. Он родился в 1965-м. Доставляете в Израиль?",
+  "hiddenFacts": [
+    "Муж родился 25 августа 1965 года",
+    "Юбилей через 4 недели",
+    "Доставка в Хайфу",
+    "Бюджет €70-80",
+    "Муж репатриант, очень скучает по СССР",
+    "Хочет именно советскую газету на русском языке"
+  ],
+  "factsAvailableInitially": [
+    "Клиент в Израиле",
+    "Хочет советскую газету мужу",
+    "1965 год рождения"
+  ],
+  "primaryObjection": {
+    "type": "delivery",
+    "text": "Сколько идёт доставка в Израиль и сколько стоит?",
+    "hiddenReason": "Практический вопрос"
+  },
+  "secondaryObjections": [],
+  "purchaseConditions": [
+    "Менеджер уточнил точную дату рождения мужа",
+    "Менеджер подтвердил доставку в Израиль",
+    "Менеджер назвал срок и стоимость доставки",
+    "Менеджер дал рекомендацию"
+  ],
+  "failureConditions": [],
+  "initialClientState": {
+    "interest": 80,
+    "trust": 55,
+    "clarity": 35,
+    "emotionalFit": 55,
+    "urgency": 40,
+    "priceAcceptance": 65,
+    "readinessToBuy": 60,
+    "irritation": 0,
+    "choiceOverload": 0
+  },
+  "stateThresholds": {
+    "trustMin": 60,
+    "clarityMin": 70,
+    "emotionalFitMin": 60,
+    "readinessToBuyMin": 65,
+    "irritationMax": 40
+  },
+  "idealDialogueStages": [
+    "Уточнить дату рождения мужа",
+    "Подтвердить доставку в Израиль",
+    "Назвать срок и стоимость",
+    "Дать рекомендацию по продукту",
+    "Назвать итоговую сумму"
+  ],
+  "isPublished": true,
+  "sourceType": "manual"
+}

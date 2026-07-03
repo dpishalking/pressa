@@ -7,10 +7,14 @@
     "dev": "tsx watch --env-file=.env src/index.ts",
     "start": "node dist/index.js",
     "build": "tsc",
+    "test": "vitest run src/training/tests",
+    "test:watch": "vitest src/training/tests",
     "seed": "tsx src/seed.ts",
     "content": "tsx --env-file=.env src/content.ts",
     "export-analytics": "tsx --env-file=.env src/export-analytics.ts",
     "export-chats": "tsx --env-file=.env src/export-chats.ts",
+    "export-conversations": "tsx --env-file=.env src/export-conversations.ts",
+    "csv-to-conversations": "tsx scripts/csv-messages-to-json.ts",
     "export-actions": "tsx --env-file=.env src/export-actions.ts",
     "setup-rop-alerts": "tsx --env-file=.env scripts/setup-rop-alerts.ts",
     "tune-cso-bot": "tsx --env-file=.env scripts/tune-cso-bot.ts",
@@ -25,12 +29,14 @@
     "better-sqlite3": "^11.9.1",
     "fflate": "^0.8.2",
     "hono": "^4.7.10",
-    "zod": "^3.24.4",
-    "tsx": "^4.19.4"
+    "tsx": "^4.19.4",
+    "zod": "^3.24.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.3",
-    "typescript": "^5.8.3"
+    "@vitest/coverage-v8": "^4.1.9",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.9"
   }
 }

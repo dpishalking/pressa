@@ -21,6 +21,7 @@ import { sendTelegramAlert, eur } from "../integrations/alerts/telegram-notify.j
 import { listTelegramSubscriberDetails } from "../integrations/alerts/telegram-subscribers.js";
 import { getSubscriberSettings } from "../integrations/alerts/subscriber-settings.js";
 import { dashboard } from "./dashboard-routes.js";
+import { trainerRouter } from "./trainer-routes.js";
 
 function verifyOutboundTokenEarly(token?: string): boolean {
   const expected = config.BITRIX24_OUTBOUND_TOKEN.trim();
@@ -513,6 +514,7 @@ admin.get("/stats/legacy", (c) => {
 
 api.route("/admin", admin);
 api.route("/admin/dashboard", dashboard);
+api.route("/trainer", trainerRouter);
 
 const dashboardDist = config.DASHBOARD_DIST_PATH.trim();
 if (dashboardDist) {

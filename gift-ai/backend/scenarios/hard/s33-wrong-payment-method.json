@@ -1,0 +1,77 @@
+{
+  "id": "s33-wrong-payment-method",
+  "name": "Не подходит способ оплаты",
+  "description": "Клиент хочет купить, но не может оплатить доступными способами. Нужно найти решение.",
+  "mode": "mode_a",
+  "difficulty": "hard",
+  "trainingSkill": "closing",
+  "buyerProfile": {
+    "gender": "male",
+    "ageRange": "50-60",
+    "country": "Россия",
+    "city": "Казань",
+    "language": "ru",
+    "personality": "готов купить, но есть технический барьер",
+    "urgencyLevel": "medium"
+  },
+  "recipientProfile": {
+    "relation": "жена",
+    "ageRange": "55",
+    "interests": ["советская эстрада", "театр"],
+    "personality": "эмоциональная, любит сюрпризы"
+  },
+  "occasion": "55-летие",
+  "initialMessage": "Хочу купить, но у меня нет карты. Работаю только с наличными или переводом на счёт. Как можно оплатить?",
+  "hiddenFacts": [
+    "Жена родилась 28 октября 1970 года",
+    "Юбилей через 2 недели",
+    "Доставка в Казань",
+    "Бюджет €70 (есть наличные)",
+    "Готов купить немедленно если найдут способ оплаты"
+  ],
+  "factsAvailableInitially": [
+    "Нет карты",
+    "Работает только с наличными или переводом"
+  ],
+  "primaryObjection": {
+    "type": "payment",
+    "text": "Только картой можно? Я не пользуюсь картами",
+    "hiddenReason": "Технический барьер, не возражение по продукту"
+  },
+  "secondaryObjections": [],
+  "purchaseConditions": [
+    "Менеджер предложил доступный вариант оплаты",
+    "Менеджер уточнил дату рождения жены",
+    "Менеджер не бросил клиента с этой проблемой"
+  ],
+  "failureConditions": [
+    "Менеджер сказал что без карты нельзя"
+  ],
+  "initialClientState": {
+    "interest": 85,
+    "trust": 55,
+    "clarity": 50,
+    "emotionalFit": 55,
+    "urgency": 50,
+    "priceAcceptance": 70,
+    "readinessToBuy": 70,
+    "irritation": 0,
+    "choiceOverload": 0
+  },
+  "stateThresholds": {
+    "trustMin": 60,
+    "clarityMin": 70,
+    "emotionalFitMin": 55,
+    "readinessToBuyMin": 70,
+    "irritationMax": 40
+  },
+  "idealDialogueStages": [
+    "Уточнить страну и доступные способы",
+    "Предложить реальное решение",
+    "Уточнить дату рождения жены",
+    "Дать рекомендацию",
+    "Организовать оплату"
+  ],
+  "isPublished": true,
+  "sourceType": "manual"
+}

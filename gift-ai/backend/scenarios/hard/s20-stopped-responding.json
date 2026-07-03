@@ -1,0 +1,76 @@
+{
+  "id": "s20-stopped-responding",
+  "name": "Клиент перестал отвечать",
+  "description": "После начала диалога клиент пропал. Менеджер должен сделать follow-up, который вернёт клиента.",
+  "mode": "mode_a",
+  "difficulty": "hard",
+  "trainingSkill": "followUp",
+  "buyerProfile": {
+    "gender": "female",
+    "ageRange": "35-45",
+    "country": "Россия",
+    "city": "Пермь",
+    "language": "ru",
+    "personality": "занятая, забывает отвечать",
+    "urgencyLevel": "medium"
+  },
+  "recipientProfile": {
+    "relation": "муж",
+    "ageRange": "45",
+    "interests": ["история", "автомобили"],
+    "personality": "любит раритеты"
+  },
+  "occasion": "день рождения",
+  "initialMessage": "[2 дня назад] Хочу газету мужу. Он родился в апреле 1980. [пауза 2 дня — клиент перестал отвечать после получения вариантов]",
+  "hiddenFacts": [
+    "Муж родился 17 апреля 1980 года",
+    "День рождения через 10 дней",
+    "Клиент просто забыл ответить — был занят",
+    "Подборка понравилась, но не дошла до оформления",
+    "Нужен хороший follow-up — короткий и дружелюбный"
+  ],
+  "factsAvailableInitially": [
+    "Диалог был начат, клиент пропал"
+  ],
+  "primaryObjection": {
+    "type": "no_response",
+    "text": "[отвечает после follow-up] Ой, извините, совсем закрутилась! Вы правы, надо бы определиться",
+    "hiddenReason": "Просто была занята, не забыла о подарке"
+  },
+  "secondaryObjections": [],
+  "purchaseConditions": [
+    "Менеджер написал короткий дружелюбный follow-up",
+    "Follow-up напомнил о дедлайне без давления",
+    "Менеджер подготовил краткое резюме с рекомендацией"
+  ],
+  "failureConditions": [
+    "Менеджер написал обидный или давящий follow-up",
+    "Менеджер не написал follow-up вовсе"
+  ],
+  "initialClientState": {
+    "interest": 55,
+    "trust": 45,
+    "clarity": 35,
+    "emotionalFit": 40,
+    "urgency": 20,
+    "priceAcceptance": 55,
+    "readinessToBuy": 35,
+    "irritation": 0,
+    "choiceOverload": 30
+  },
+  "stateThresholds": {
+    "trustMin": 60,
+    "clarityMin": 65,
+    "emotionalFitMin": 55,
+    "readinessToBuyMin": 65,
+    "irritationMax": 40
+  },
+  "idealDialogueStages": [
+    "Написать короткий дружелюбный follow-up",
+    "Напомнить о крайнем сроке",
+    "Предложить одну конкретную рекомендацию",
+    "Предложить оформить"
+  ],
+  "isPublished": true,
+  "sourceType": "manual"
+}
