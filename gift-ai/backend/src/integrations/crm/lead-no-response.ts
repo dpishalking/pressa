@@ -1,5 +1,5 @@
 import { getBitrixLeadById, type BitrixLead } from "./bitrix-client.js";
-import { fetchSessionChat, findLatestOpenLineSessionForOwners } from "./bitrix-openlines.js";
+import { fetchSessionChat, findLatestOpenLineSessionForOwners, type SessionChatStats } from "./bitrix-openlines.js";
 
 /** «Новый лид / New lead» — ещё не взят в работу. */
 export const LEAD_NEW_STATUS_ID = "NEW";
@@ -53,6 +53,15 @@ export function hasDirectPurchaseIntent(texts: string[]): boolean {
   return PURCHASE_INTENT_KEYWORDS.some((kw) => combined.includes(kw));
 }
 
+/** Комментарий к посту Instagram без запроса о покупке — не алертить. */
+export function shouldSkipInstagramCommentAlert(
+  stats: Pick<SessionChatStats, "instagramPostComment" | "messages">,
+): boolean {
+  if (!stats.instagramPostComment) return false;
+  const clientTexts = stats.messages.filter((m) => m.author === "client").map((m) => m.text);
+  return !hasDirectPurchaseIntent(clientTexts);
+}
+
 /** Лид считается необработанным только в статусе NEW (не IN_PROCESS и т.д.). */
 export function isLeadNewStatus(lead: Pick<BitrixLead, "STATUS_ID" | "STATUS_SEMANTIC_ID">): boolean {
   return lead.STATUS_SEMANTIC_ID === "P" && lead.STATUS_ID === LEAD_NEW_STATUS_ID;
@@ -69,10 +78,8 @@ export async function managerRepliedToLeadInChat(leadId: string, sinceIso: strin
   );
 }
 
-function instagramCommentWithoutPurchaseIntent(stats: Awaited<ReturnType<typeof fetchSessionChat>>): boolean {
-  if (!stats.instagramPostComment) return false;
-  const clientTexts = stats.messages.filter((m) => m.author === "client").map((m) => m.text);
-  return !hasDirectPurchaseIntent(clientTexts);
+function instagramCommentWithoutPurchaseIntent(stats: SessionChatStats): boolean {
+  return shouldSkipInstagramCommentAlert(stats);
 }
 
 /**

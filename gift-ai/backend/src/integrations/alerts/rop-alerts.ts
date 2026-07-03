@@ -20,7 +20,7 @@ import {
   SMART_INVOICE_ENTITY_TYPE_ID,
 } from "../crm/bitrix-invoices.js";
 import { findOpenLineSessionBySessionId, fetchSessionChat, type OpenLineSession } from "../crm/bitrix-openlines.js";
-import { isLeadNewStatus, isLeadEligibleForNoResponseAlert, leadNeedsNoResponseAlert, LEAD_NEW_STATUS_ID } from "../crm/lead-no-response.js";
+import { isLeadNewStatus, isLeadEligibleForNoResponseAlert, leadNeedsNoResponseAlert, LEAD_NEW_STATUS_ID, shouldSkipInstagramCommentAlert } from "../crm/lead-no-response.js";
 import { isOpenLineSessionAlertable, isOpenLineSessionOpen } from "../crm/session-crm-status.js";
 import { loadFxConverter } from "../analytics/fx-rates.js";
 import { logger } from "../../logger.js";
@@ -182,6 +182,9 @@ export async function scheduleChatWatch(
   if (!session) return;
   if (!isOpenLineSessionOpen(session)) return;
   if (!(await isOpenLineSessionAlertable(session))) return;
+
+  const stats = await fetchSessionChat(session);
+  if (shouldSkipInstagramCommentAlert(stats)) return;
 
   upsertWatch({
     watchType: "chat_no_response",
@@ -492,6 +495,8 @@ async function fireChatNoResponseAlert(
   if (!(await isOpenLineSessionAlertable(session))) return;
 
   const stats = await fetchSessionChat(session);
+  if (shouldSkipInstagramCommentAlert(stats)) return;
+
   const clientMessages = stats.messages.filter((m) => m.author === "client");
   const managerMessages = stats.messages.filter((m) => m.author === "manager");
   const lastClient = clientMessages.at(-1);
@@ -547,6 +552,9 @@ export async function handleVipChatMessage(opts: {
   if (opts.senderId && session.responsibleId && opts.senderId === session.responsibleId) {
     return;
   }
+
+  const stats = await fetchSessionChat(session);
+  if (shouldSkipInstagramCommentAlert(stats)) return;
 
   const contactId = await resolveContactIdFromSession(session);
   if (!contactId) return;
