@@ -12,6 +12,7 @@ import {
   getActiveSessionForUser,
 } from "../training/training-service.js";
 import { getScenarioFromDb } from "../training/scenario-loader.js";
+import { generateScenarioForTemplate } from "../training/scenario-templates.js";
 import { importConversations, listImportedScenarioFiles } from "../training/conversation-importer.js";
 import { createInvite, buildInviteLink, getInvite } from "../training/invite-service.js";
 import {
@@ -216,6 +217,23 @@ trainerRouter.get("/scenarios", async (c) => {
   } catch (e) {
     logger.error("list scenarios error", { error: String(e) });
     return c.json({ error: "Internal error" }, 500);
+  }
+});
+
+trainerRouter.post("/scenarios/generate", async (c) => {
+  try {
+    const body = await c.req.json() as { template?: string };
+    const template = body.template ?? "gift_search";
+    const result = await generateScenarioForTemplate(template);
+    const { hiddenFacts: _, ...safeScenario } = result.scenario;
+    return c.json({
+      scenarioId: result.scenarioId,
+      scenario: safeScenario,
+      generated: result.generated,
+    });
+  } catch (e) {
+    logger.error("generate scenario error", { error: String(e) });
+    return c.json({ error: String(e) }, 500);
   }
 });
 

@@ -6,6 +6,7 @@ import {
   difficultyKeyboard,
   skillKeyboard,
   scenarioListKeyboard,
+  templateScenarioKeyboard,
   inSessionKeyboard,
   postSessionKeyboard,
   quickExercisesKeyboard,
@@ -163,8 +164,54 @@ async function finishTraining(ctx: Context, uid: string): Promise<void> {
   }
 }
 
+async function showTemplateScenarioMenu(ctx: Context): Promise<void> {
+  await ctx.reply(
+    `<b>Выберите сценарий:</b>\n\n` +
+      `📅 <b>Клиент указал дату</b> — проверь архив и предложи формат\n` +
+      `🎁 <b>Клиент ищет подарок</b> — выяви потребность и предложи вариант`,
+    {
+      parse_mode: "HTML",
+      reply_markup: templateScenarioKeyboard(),
+    },
+  );
+}
+
+async function startTemplateTraining(ctx: Context, uid: string, template: string): Promise<void> {
+  const { userId: internalId } = await ensureUser(ctx);
+  await restoreActiveSession(uid, internalId);
+  const active = getSession(uid);
+  if (active.currentSessionId && active.screen === "in_session") {
+    await ctx.reply(
+      "Тренировка уже идёт. Напишите следующее сообщение или нажмите «Завершить».",
+      { reply_markup: inSessionKeyboard(active.currentMode ?? "mode_a", active.hintMode ?? false) },
+    );
+    return;
+  }
+
+  await ctx.reply("⏳ Загружаю сценарий…");
+  const generated = await trainerApi.generateScenario(template);
+  const mode: "mode_a" | "mode_b" = "mode_a";
+  const result = await trainerApi.startSession(internalId, generated.scenarioId, mode);
+
+  setSession(uid, {
+    screen: "in_session",
+    currentSessionId: result.sessionId,
+    currentScenarioId: generated.scenarioId,
+    currentMode: mode,
+  });
+
+  const scenario = result.scenario;
+  let introText = `<b>🎭 Сценарий: ${escapeHtml(scenario.name)}</b>\n`;
+  introText += `${difficultyLabel(scenario.difficulty)} · ${skillLabel(scenario.trainingSkill)}\n\n`;
+  introText += `💼 Вы — менеджер. AI — клиент.\n\nКлиент НЕ раскрывает сразу всю информацию. Квалифицируйте через диалог.\n\nДля завершения: /finish или кнопка «Завершить».\n\n`;
+  introText += `<b>═══ Начало диалога ═══</b>`;
+
+  await ctx.reply(introText, { parse_mode: "HTML" });
+  await showSessionDialogStart(ctx, mode, result, false);
+}
+
 const MAIN_MENU_TEXT =
-  "🎓 <b>Тренажёр менеджеров Retro Pressa</b>\n\nОтрабатывай навыки продаж на реальных сценариях.\n\nВыбери действие:";
+  "🎓 <b>Тренажёр Retro Pressa</b>\n\nОтработай диалог с клиентом в ролевке.\n\nНажми «Начать ролевку» и выбери сценарий.";
 
 function resetToMainMenuSession(uid: string): void {
   setSession(uid, {
@@ -264,10 +311,7 @@ bot.command("train", async (ctx) => {
       return;
     }
     setSession(uid, { screen: "select_mode", currentSessionId: undefined, currentScenarioId: undefined });
-    await ctx.reply(
-      "🎭 <b>Начать ролевку</b>\n\nВыберите режим тренировки:",
-      { parse_mode: "HTML", reply_markup: modeKeyboard() },
-    );
+    await showTemplateScenarioMenu(ctx);
   } catch (e) {
     console.error("[train]", e);
     await ctx.reply("Ошибка. Попробуйте /start");
@@ -404,10 +448,20 @@ bot.on("callback_query:data", async (ctx) => {
       }
 
       setSession(uid, { screen: "select_mode", currentSessionId: undefined, currentScenarioId: undefined });
-      await ctx.reply(
-        "🎭 <b>Начать ролевку</b>\n\nВыберите режим:",
-        { parse_mode: "HTML", reply_markup: modeKeyboard() },
-      );
+      await showTemplateScenarioMenu(ctx);
+      return;
+    }
+
+    if (data.startsWith("template:")) {
+      const template = data.slice("template:".length);
+      try {
+        await startTemplateTraining(ctx, uid, template);
+      } catch (e) {
+        console.error("[template scenario]", template, e);
+        await ctx.reply("Не удалось запустить сценарий. Попробуйте ещё раз.", {
+          reply_markup: templateScenarioKeyboard(),
+        });
+      }
       return;
     }
 

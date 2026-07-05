@@ -58,6 +58,13 @@ export function scenarioListKeyboard(
   return kb;
 }
 
+export function templateScenarioKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("📅 Клиент указал дату", "template:knows_date").row()
+    .text("🎁 Клиент ищет подарок", "template:gift_search").row()
+    .text("🔙 Назад", "menu:main");
+}
+
 export function inSessionKeyboard(mode: "mode_a" | "mode_b", hintMode = false): InlineKeyboard {
   const kb = new InlineKeyboard();
   if (mode === "mode_b") {

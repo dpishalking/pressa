@@ -133,6 +133,13 @@ export const trainerApi = {
   getScenario: (id: string) =>
     apiGet<TrainingScenarioSafe>(`/scenarios/${id}`),
 
+  generateScenario: (template: string) =>
+    apiPost<{ scenarioId: string; scenario: TrainingScenarioSafe; generated: boolean }>(
+      "/scenarios/generate",
+      { template },
+      60_000,
+    ),
+
   startSession: (userId: string, scenarioId: string, mode: "mode_a" | "mode_b", hintMode?: boolean) =>
     apiPost<{
       sessionId: string;
