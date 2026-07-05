@@ -2,13 +2,11 @@ import {
   bitrixDealLink,
   bitrixLeadLink,
   bitrixLostDialogueLink,
-  bitrixOpenLineLink,
   bitrixUnpaidInvoiceLink,
 } from "./bitrix-links.js";
 import type {
   DealInDialogueRow,
   LeadInWorkRow,
-  SlowResponseRow,
   StaleDealRow,
   ThinkDealRow,
   UnpaidInvoiceRow,
@@ -144,16 +142,5 @@ export function dealInDialogueSheetRows(rows: DealInDialogueRow[], baseCurrency:
     sheetText(row.managerName),
     sheetText(row.phone),
     bitrixDealLink(row.dealId),
-  ]);
-}
-
-export function slowResponseSheetRows(rows: SlowResponseRow[]): SheetCell[][] {
-  return rows.map((row) => [
-    row.sessionId,
-    row.channel,
-    sheetText(row.managerName),
-    row.firstResponseMinutes,
-    row.sessionDate,
-    bitrixOpenLineLink(row.sessionId),
   ]);
 }

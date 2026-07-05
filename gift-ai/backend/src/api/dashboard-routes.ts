@@ -115,7 +115,6 @@ function withBitrixLinks(result: ActionListsResult): ActionListsResult & {
   unprocessedLeads: Array<ActionListsResult["unprocessedLeads"][0] & { bitrixLink: string }>;
   leadsInWorkStale: Array<ActionListsResult["leadsInWorkStale"][0] & { bitrixLink: string }>;
   dealsInDialogueStale: Array<ActionListsResult["dealsInDialogueStale"][0] & { bitrixLink: string }>;
-  slowResponses: Array<ActionListsResult["slowResponses"][0] & { bitrixLink: string }>;
 } {
   return {
     ...result,
@@ -148,10 +147,6 @@ function withBitrixLinks(result: ActionListsResult): ActionListsResult & {
     dealsInDialogueStale: result.dealsInDialogueStale.map((row) => ({
       ...row,
       bitrixLink: bitrixDealLink(row.dealId),
-    })),
-    slowResponses: result.slowResponses.map((row) => ({
-      ...row,
-      bitrixLink: bitrixOpenLineLink(row.sessionId),
     })),
   };
 }

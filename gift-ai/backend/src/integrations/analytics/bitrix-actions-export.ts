@@ -3,7 +3,6 @@ import {
   dealInDialogueSheetRows,
   leadInWorkSheetRows,
   lostDialogueSheetRows,
-  slowResponseSheetRows,
   staleDealSheetRows,
   thinkDealSheetRows,
   unpaidInvoiceSheetRows,
@@ -14,7 +13,6 @@ import {
   ACTIONS_SUMMARY_HEADERS,
   LOST_DIALOGUE_HEADERS,
   THINK_DEAL_HEADERS,
-  SLOW_RESPONSE_HEADERS,
   STALE_DEAL_HEADERS,
   UNPAID_INVOICE_HEADERS,
   UNPROCESSED_LEAD_HEADERS,
@@ -24,7 +22,6 @@ import {
   lostDialoguesTab,
   thinkDealsTab,
   deleteSheetTabs,
-  slowResponsesTab,
   staleDealsTab,
   unprocessedLeadsTab,
   leadsInWorkTab,
@@ -60,8 +57,6 @@ function summaryRows(result: ActionListsResult, baseCurrency: string): SheetCell
     ["Необработанных лидов", s.unprocessedLeadsCount],
     [`Лид в работе >${DEFAULT_THRESHOLDS.leadInWorkStaleHours}ч`, s.leadsInWorkStaleCount],
     [`В диалоге без ответа >${DEFAULT_THRESHOLDS.dealInDialogueNoResponseHours}ч`, s.dealsInDialogueStaleCount],
-    ["Медленных ответов (>30 мин)", s.slowResponsesCount],
-    ["Средний первый ответ (мин)", s.avgFirstResponseMinutes],
     ["--- Вчера ---", ""],
     ["Лидов вчера", s.yesterdayLeads],
     ["Сессий ОЛ вчера", s.yesterdaySessions],
@@ -93,7 +88,6 @@ export async function exportBitrixActionLists(): Promise<BitrixActionsExportSumm
     unprocessedLeadsTab(),
     leadsInWorkTab(),
     dealsInDialogueTab(),
-    slowResponsesTab(),
   ];
 
   await writeSheetContent(
@@ -160,15 +154,12 @@ export async function exportBitrixActionLists(): Promise<BitrixActionsExportSumm
     dealInDialogueSheetRows(result.dealsInDialogueStale, cfg.baseCurrency),
   );
 
-  await writeSheetContent(
-    account,
-    cfg.sheetId,
-    tabs[8]!,
-    SLOW_RESPONSE_HEADERS,
-    slowResponseSheetRows(result.slowResponses),
-  );
-
-  const removedTabs = await deleteSheetTabs(account, cfg.sheetId, ["Я подумаю", "Я подумаю закрыть", "Зависшие сделки"]);
+  const removedTabs = await deleteSheetTabs(account, cfg.sheetId, [
+    "Я подумаю",
+    "Я подумаю закрыть",
+    "Зависшие сделки",
+    "Медленный ответ",
+  ]);
   if (removedTabs.length) {
     logger.info("Removed legacy think-deal tabs", { removedTabs });
   }
