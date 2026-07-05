@@ -79,7 +79,7 @@ function formatManagerSummary(opts: {
 export async function notifyTrainingSessionComplete(sessionId: string, evaluation: EvaluationResult): Promise<void> {
   const db = getDb();
   const session = db.prepare(`
-    SELECT s.user_id, s.scenario_id, u.full_name, u.team_id, u.service_tag
+    SELECT s.user_id, s.scenario_id, u.full_name, u.team_id, u.service_tag, u.telegram_id
     FROM training_sessions s
     JOIN training_users u ON u.id = s.user_id
     WHERE s.id = ?
@@ -89,6 +89,7 @@ export async function notifyTrainingSessionComplete(sessionId: string, evaluatio
     full_name: string;
     team_id: string | null;
     service_tag: string | null;
+    telegram_id: string;
   } | undefined;
 
   if (!session) return;
@@ -117,6 +118,10 @@ export async function notifyTrainingSessionComplete(sessionId: string, evaluatio
   if (managerTelegramId) recipients.add(managerTelegramId);
   for (const chatId of config.TRAINER_NOTIFY_TELEGRAM_IDS) {
     recipients.add(chatId);
+  }
+  // Не дублируем отчёт менеджеру в его же чат с ботом — у него уже есть разбор в диалоге
+  if (session.telegram_id) {
+    recipients.delete(session.telegram_id);
   }
 
   if (!recipients.size) {

@@ -83,7 +83,7 @@ export function formatEvaluation(e: EvaluationResult): string {
   if (e.strengths.length > 0) {
     text += `<b>💪 Сильные стороны:</b>\n`;
     for (const s of e.strengths.slice(0, 3)) {
-      text += `✅ ${s}\n`;
+      text += `✅ ${escapeHtml(s)}\n`;
     }
     text += "\n";
   }
@@ -91,7 +91,7 @@ export function formatEvaluation(e: EvaluationResult): string {
   if (e.mistakes.length > 0) {
     text += `<b>⚠️ Ключевые ошибки:</b>\n`;
     for (const m of e.mistakes.slice(0, 3)) {
-      text += `❌ ${m}\n`;
+      text += `❌ ${escapeHtml(m)}\n`;
     }
     text += "\n";
   }
@@ -99,25 +99,25 @@ export function formatEvaluation(e: EvaluationResult): string {
   if (e.missedQuestions.length > 0) {
     text += `<b>❓ Пропущенные вопросы:</b>\n`;
     for (const q of e.missedQuestions.slice(0, 3)) {
-      text += `• ${q}\n`;
+      text += `• ${escapeHtml(q)}\n`;
     }
     text += "\n";
   }
 
   if (e.clientFeeling) {
-    text += `<b>🧠 Клиент чувствовал:</b>\n${e.clientFeeling}\n\n`;
+    text += `<b>🧠 Клиент чувствовал:</b>\n${escapeHtml(e.clientFeeling)}\n\n`;
   }
 
   if (e.betterReplies.length > 0) {
     const br = e.betterReplies[0];
     text += `<b>💡 Лучший ответ вместо:</b>\n`;
-    text += `<i>«${br.originalText.slice(0, 80)}»</i>\n`;
-    text += `<b>→ Можно было:</b> ${br.suggestion}\n`;
-    text += `<i>${br.reason}</i>\n\n`;
+    text += `<i>«${escapeHtml(br.originalText.slice(0, 80))}»</i>\n`;
+    text += `<b>→ Можно было:</b> ${escapeHtml(br.suggestion)}\n`;
+    text += `<i>${escapeHtml(br.reason)}</i>\n\n`;
   }
 
   if (e.exampleNextMessage) {
-    text += `<b>📝 Следующий шаг:</b>\n${e.exampleNextMessage}\n`;
+    text += `<b>📝 Следующий шаг:</b>\n${escapeHtml(e.exampleNextMessage)}\n`;
   }
 
   return text;

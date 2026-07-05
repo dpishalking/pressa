@@ -1,4 +1,4 @@
-import { Bot, GrammyError, InlineKeyboard } from "grammy";
+import { Bot, GrammyError, InlineKeyboard, type Context } from "grammy";
 import { getSession, setSession } from "./session.js";
 import {
   mainMenuKeyboard,
@@ -47,35 +47,132 @@ function username(ctx: { from?: { username?: string } }): string {
   return ctx.from?.username ?? "";
 }
 
-async function ensureUser(ctx: { from?: { id?: number; first_name?: string; last_name?: string; username?: string } }): Promise<string> {
+function parseStartPayload(text: string | undefined): string | null {
+  if (!text) return null;
+  const payload = text.split(/\s+/)[1]?.trim();
+  if (!payload) return null;
+  if (payload.startsWith("inv_")) return payload;
+  if (payload.startsWith("inv-")) return payload.replace(/^inv-/, "inv_");
+  return null;
+}
+
+async function ensureUser(
+  ctx: { from?: { id?: number; first_name?: string; last_name?: string; username?: string } },
+  inviteToken?: string,
+): Promise<{ userId: string; user?: { full_name: string; team_name: string | null; service_tag: string | null } }> {
   const uid = userId(ctx);
   const session = getSession(uid);
-  if (session.userId) return session.userId;
+  if (session.userId && !inviteToken) return { userId: session.userId };
 
   try {
-    const result = await trainerApi.registerUser(Number(uid), fullName(ctx), username(ctx));
+    const result = await trainerApi.registerUser(Number(uid), fullName(ctx), username(ctx), inviteToken);
     setSession(uid, { userId: result.userId });
-    return result.userId;
+    return { userId: result.userId, user: result.user };
   } catch (e) {
     console.error("[ensureUser]", e);
     throw e;
   }
 }
 
-async function showMainMenu(ctx: { reply: (text: string, opts?: Record<string, unknown>) => Promise<{ message_id: number }> }, uid: string): Promise<void> {
-  setSession(uid, { screen: "main_menu" });
+async function restoreActiveSession(uid: string, internalUserId: string): Promise<void> {
+  const session = getSession(uid);
+  if (session.screen === "in_session" && session.currentSessionId) return;
+
+  try {
+    const active = await trainerApi.getActiveSession(internalUserId);
+    if (!active.active) return;
+
+    setSession(uid, {
+      screen: "in_session",
+      currentSessionId: active.sessionId,
+      currentScenarioId: active.scenarioId,
+      currentMode: active.mode,
+    });
+  } catch (e) {
+    console.error("[restoreActiveSession]", e);
+  }
+}
+
+const MAIN_MENU_TEXT =
+  "🎓 <b>Тренажёр менеджеров Retro Pressa</b>\n\nОтрабатывай навыки продаж на реальных сценариях.\n\nВыбери действие:";
+
+function resetToMainMenuSession(uid: string): void {
+  setSession(uid, {
+    screen: "main_menu",
+    currentSessionId: undefined,
+    pendingEvaluationSessionId: undefined,
+    pendingDifficulty: undefined,
+    pendingSkill: undefined,
+  });
+}
+
+async function showMainMenu(ctx: Context, uid: string): Promise<void> {
+  resetToMainMenuSession(uid);
+
+  if (ctx.callbackQuery?.message) {
+    try {
+      await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+    } catch {
+      // Старое сообщение — не критично
+    }
+  }
+
+  await ctx.reply(MAIN_MENU_TEXT, {
+    parse_mode: "HTML",
+    reply_markup: mainMenuKeyboard(),
+  });
+}
+
+async function showSessionDialogStart(
+  ctx: { reply: (text: string, opts?: Record<string, unknown>) => Promise<{ message_id: number }> },
+  mode: "mode_a" | "mode_b",
+  result: { initialMessage: string; initialManagerReply?: string },
+  hintMode = false,
+): Promise<void> {
+  if (mode === "mode_a") {
+    await ctx.reply(
+      `👤 <b>Клиент:</b>\n${escapeHtml(result.initialMessage)}`,
+      { parse_mode: "HTML", reply_markup: inSessionKeyboard("mode_a", hintMode) },
+    );
+    return;
+  }
+
   await ctx.reply(
-    "🎓 <b>Тренажёр менеджеров Retro Pressa</b>\n\nОтрабатывай навыки продаж на реальных сценариях.\n\nВыбери действие:",
-    { parse_mode: "HTML", reply_markup: mainMenuKeyboard() },
+    `👤 <b>Клиент написал:</b>\n<i>${escapeHtml(result.initialMessage)}</i>`,
+    { parse_mode: "HTML" },
   );
+
+  if (result.initialManagerReply) {
+    await ctx.reply(
+      `💼 <b>Менеджер (AI):</b>\n${escapeHtml(result.initialManagerReply)}\n\n✍️ Продолжайте диалог <b>от лица клиента</b>.`,
+      { parse_mode: "HTML", reply_markup: inSessionKeyboard("mode_b") },
+    );
+  }
 }
 
 // ─── Commands ─────────────────────────────────────────────────────────────────
 
 bot.command("start", async (ctx) => {
   const uid = userId(ctx);
+  const inviteToken = parseStartPayload(ctx.message?.text) ?? undefined;
+
   try {
-    await ensureUser(ctx);
+    const { userId: internalUserId, user } = await ensureUser(ctx, inviteToken);
+
+    if (inviteToken && user) {
+      const serviceLabel = user.service_tag === "yourstorymagazine" ? "YourStory Magazine" : "Retro Pressa";
+      const lines = [
+        `👋 Привет, <b>${escapeHtml(user.full_name)}</b>!`,
+        user.team_name ? `Вы в команде <b>${escapeHtml(user.team_name)}</b>.` : "",
+        user.service_tag ? `Сервис: <b>${escapeHtml(serviceLabel)}</b>.` : "",
+        "",
+        "Можно начинать тренировки — выберите действие ниже.",
+      ].filter(Boolean);
+
+      await ctx.reply(lines.join("\n"), { parse_mode: "HTML" });
+    }
+
+    await restoreActiveSession(uid, internalUserId);
     await showMainMenu(ctx, uid);
   } catch (e) {
     console.error("[start]", e);
@@ -115,7 +212,7 @@ bot.command("quick", async (ctx) => {
 bot.command("progress", async (ctx) => {
   const uid = userId(ctx);
   try {
-    const internalId = await ensureUser(ctx);
+    const { userId: internalId } = await ensureUser(ctx);
     const progress = await trainerApi.getProgress(internalId);
     await ctx.reply(formatProgress(progress), {
       parse_mode: "HTML",
@@ -130,7 +227,7 @@ bot.command("progress", async (ctx) => {
 bot.command("history", async (ctx) => {
   const uid = userId(ctx);
   try {
-    const internalId = await ensureUser(ctx);
+    const { userId: internalId } = await ensureUser(ctx);
     const data = await trainerApi.getHistory(internalId);
     const sessions = data.sessions;
 
@@ -216,16 +313,29 @@ bot.on("callback_query:data", async (ctx) => {
   const uid = userId(ctx);
 
   try {
-    await ctx.answerCallbackQuery().catch(() => {});
-
-    // Main menu navigation
+    // Main menu — отвечаем сразу, чтобы Telegram не «зависал» на кнопке
     if (data === "menu:main") {
+      await ctx.answerCallbackQuery({ text: "Главное меню" });
       await showMainMenu(ctx, uid);
       return;
     }
 
+    await ctx.answerCallbackQuery().catch(() => {});
+
     if (data === "menu:train") {
-      setSession(uid, { screen: "select_mode" });
+      const session = getSession(uid);
+      const { userId: internalId } = await ensureUser(ctx);
+      await restoreActiveSession(uid, internalId);
+      const restored = getSession(uid);
+      if (restored.currentSessionId && restored.screen === "in_session") {
+        await ctx.reply(
+          "Тренировка уже идёт. Просто напишите следующее сообщение в чат или нажмите «Завершить диалог».",
+          { reply_markup: inSessionKeyboard(restored.currentMode ?? "mode_a", restored.hintMode ?? false) },
+        );
+        return;
+      }
+
+      setSession(uid, { screen: "select_mode", currentSessionId: undefined, currentScenarioId: undefined });
       await ctx.reply(
         "🎭 <b>Начать ролевку</b>\n\nВыберите режим:",
         { parse_mode: "HTML", reply_markup: modeKeyboard() },
@@ -243,7 +353,7 @@ bot.on("callback_query:data", async (ctx) => {
     }
 
     if (data === "menu:progress") {
-      const internalId = await ensureUser(ctx);
+      const { userId: internalId } = await ensureUser(ctx);
       const progress = await trainerApi.getProgress(internalId);
       await ctx.reply(formatProgress(progress), {
         parse_mode: "HTML",
@@ -253,7 +363,7 @@ bot.on("callback_query:data", async (ctx) => {
     }
 
     if (data === "menu:history") {
-      const internalId = await ensureUser(ctx);
+      const { userId: internalId } = await ensureUser(ctx);
       const historyData = await trainerApi.getHistory(internalId);
       const sessions = historyData.sessions;
 
@@ -328,7 +438,7 @@ bot.on("callback_query:data", async (ctx) => {
       const session = getSession(uid);
 
       try {
-        const internalId = await ensureUser(ctx);
+        const { userId: internalId } = await ensureUser(ctx);
         const scenariosData = await trainerApi.getScenarios(
           skill === "random" ? undefined : session.pendingDifficulty,
           skill === "random" ? undefined : skill,
@@ -362,7 +472,7 @@ bot.on("callback_query:data", async (ctx) => {
       const session = getSession(uid);
 
       try {
-        const internalId = await ensureUser(ctx);
+        const { userId: internalId } = await ensureUser(ctx);
         const mode = session.currentMode ?? "mode_a";
 
         await ctx.reply("⏳ Загружаю сценарий…");
@@ -372,6 +482,7 @@ bot.on("callback_query:data", async (ctx) => {
           screen: "in_session",
           currentSessionId: result.sessionId,
           currentScenarioId: scenarioId,
+          currentMode: mode,
         });
 
         const scenario = result.scenario;
@@ -385,12 +496,7 @@ bot.on("callback_query:data", async (ctx) => {
         introText += `<b>═══ Начало диалога ═══</b>`;
 
         await ctx.reply(introText, { parse_mode: "HTML" });
-
-        // Send first client message
-        await ctx.reply(
-          `👤 <b>Клиент:</b>\n${escapeHtml(result.initialMessage)}`,
-          { parse_mode: "HTML", reply_markup: inSessionKeyboard(result.scenario.mode === "mode_a") },
-        );
+        await showSessionDialogStart(ctx, mode, result, session.hintMode ?? false);
       } catch (e) {
         console.error("[start scenario]", e);
         await ctx.reply("Не удалось запустить сценарий. Попробуйте ещё раз.", { reply_markup: mainMenuKeyboard() });
@@ -404,6 +510,11 @@ bot.on("callback_query:data", async (ctx) => {
       const session = getSession(uid);
       if (!session.currentSessionId) return;
 
+      if (session.currentMode === "mode_b") {
+        await ctx.answerCallbackQuery({ text: "Доступно только в режиме A" });
+        return;
+      }
+
       const actionMessages: Record<string, string> = {
         photo: "[Менеджер отправил фотографии продукта]",
         pricing: "[Менеджер отправил полный расчёт: товар + персонализация + доставка + итог + срок]",
@@ -414,19 +525,19 @@ bot.on("callback_query:data", async (ctx) => {
 
       try {
         const result = await trainerApi.sendMessage(session.currentSessionId, actionText);
-
-        const stateText = result.stateChanges.length > 0
-          ? `\n<i>📊 ${result.stateChanges.map((c) => `${c.field} ${c.delta > 0 ? "+" : ""}${c.delta}`).join(", ")}</i>`
-          : "";
+        if (!("clientReply" in result)) {
+          await ctx.reply("Это действие доступно только в режиме A.");
+          return;
+        }
 
         await ctx.reply(
-          `💼 <b>Вы:</b>\n<i>${escapeHtml(actionText)}</i>${stateText}`,
+          `💼 <b>Вы:</b>\n<i>${escapeHtml(actionText)}</i>`,
           { parse_mode: "HTML" },
         );
 
         await ctx.reply(
           `👤 <b>Клиент</b> ${moodEmoji(result.moodLabel)}:\n${escapeHtml(result.clientReply)}`,
-          { parse_mode: "HTML", reply_markup: inSessionKeyboard(true) },
+          { parse_mode: "HTML", reply_markup: inSessionKeyboard("mode_a", session.hintMode ?? false) },
         );
 
         if (result.isPurchaseReady) {
@@ -488,22 +599,20 @@ bot.on("callback_query:data", async (ctx) => {
       // Re-trigger scenario start
       await ctx.reply("Перезапускаю сценарий…");
       try {
-        const internalId = await ensureUser(ctx);
+        const { userId: internalId } = await ensureUser(ctx);
         const mode = session.currentMode ?? "mode_a";
         const result = await trainerApi.startSession(internalId, scenarioId, mode);
         setSession(uid, {
           screen: "in_session",
           currentSessionId: result.sessionId,
           currentScenarioId: scenarioId,
+          currentMode: mode,
         });
         await ctx.reply(
           `🔁 Повторяем сценарий: <b>${escapeHtml(result.scenario.name)}</b>`,
           { parse_mode: "HTML" },
         );
-        await ctx.reply(
-          `👤 <b>Клиент:</b>\n${escapeHtml(result.initialMessage)}`,
-          { parse_mode: "HTML", reply_markup: inSessionKeyboard(false) },
-        );
+        await showSessionDialogStart(ctx, mode, result, session.hintMode ?? false);
       } catch (e) {
         await ctx.reply("Не удалось перезапустить.", { reply_markup: mainMenuKeyboard() });
       }
@@ -552,7 +661,16 @@ bot.on("message:text", async (ctx) => {
   if (text.startsWith("/")) return;
 
   const uid = userId(ctx);
-  const session = getSession(uid);
+  let session = getSession(uid);
+
+  try {
+    const { userId: internalId } = await ensureUser(ctx);
+    await restoreActiveSession(uid, internalId);
+    session = getSession(uid);
+  } catch {
+    await ctx.reply("Не удалось подключиться к серверу. Запустите backend и попробуйте снова.");
+    return;
+  }
 
   // Quick exercise mode
   if (session.screen === "quick_exercise" && session.currentScenarioId?.startsWith("quick:")) {
@@ -574,22 +692,41 @@ bot.on("message:text", async (ctx) => {
 
   // In active training session
   if (session.screen === "in_session" && session.currentSessionId) {
+    const mode = session.currentMode ?? "mode_a";
+
     try {
       await ctx.api.sendChatAction(ctx.chat.id, "typing");
       const result = await trainerApi.sendMessage(session.currentSessionId, text);
 
-      // Show state changes if significant
-      const significantChanges = result.stateChanges.filter((c) => Math.abs(c.delta) >= 5);
-      let stateText = "";
-      if (significantChanges.length > 0) {
-        stateText = `\n<i>📊 ${significantChanges.map((c) => `${c.field} ${c.delta > 0 ? "+" : ""}${c.delta}`).join(", ")}</i>`;
+      if (mode === "mode_b") {
+        if (!("managerReply" in result)) {
+          throw new Error("Unexpected API response for mode B");
+        }
+
+        await ctx.reply(
+          `👤 <b>Вы (клиент):</b>\n${escapeHtml(text)}`,
+          { parse_mode: "HTML" },
+        );
+
+        await ctx.reply(
+          `💼 <b>Менеджер (AI):</b>\n${escapeHtml(result.managerReply)}`,
+          {
+            parse_mode: "HTML",
+            reply_markup: inSessionKeyboard("mode_b"),
+          },
+        );
+        return;
+      }
+
+      if (!("clientReply" in result)) {
+        throw new Error("Unexpected API response for mode A");
       }
 
       await ctx.reply(
-        `👤 <b>Клиент</b> ${moodEmoji(result.moodLabel)}:\n${escapeHtml(result.clientReply)}${stateText}`,
+        `👤 <b>Клиент</b> ${moodEmoji(result.moodLabel)}:\n${escapeHtml(result.clientReply)}`,
         {
           parse_mode: "HTML",
-          reply_markup: inSessionKeyboard(session.hintMode ?? false),
+          reply_markup: inSessionKeyboard("mode_a", session.hintMode ?? false),
         },
       );
 
@@ -624,6 +761,8 @@ bot.on("message:text", async (ctx) => {
       const msg = e instanceof Error ? e.message : "";
       if (/timeout|503|429/i.test(msg)) {
         await ctx.reply("AI временно перегружен. Подождите 10 секунд и отправьте сообщение ещё раз.");
+      } else if (/500|fetch failed|ECONNREFUSED|API/i.test(msg)) {
+        await ctx.reply("Сервер тренажёра недоступен. Проверьте, что backend запущен (npm run dev), и отправьте сообщение снова.");
       } else {
         await ctx.reply("Не удалось обработать сообщение. Попробуйте ещё раз.");
       }
