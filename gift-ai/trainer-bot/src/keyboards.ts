@@ -58,8 +58,11 @@ export function scenarioListKeyboard(
   return kb;
 }
 
-export function inSessionKeyboard(hintMode: boolean): InlineKeyboard {
+export function inSessionKeyboard(mode: "mode_a" | "mode_b", hintMode = false): InlineKeyboard {
   const kb = new InlineKeyboard();
+  if (mode === "mode_b") {
+    return kb.text("🏁 Завершить диалог", "session:finish");
+  }
   if (hintMode) {
     kb.text("💡 Подсказка", "session:hint").row();
   }
