@@ -185,6 +185,10 @@ export interface ProcessMessageResult {
   hint?: { currentStage: string; knownFacts: string[]; unknownFacts: string[]; suggestion: string; clientMoodLabel: string };
 }
 
+function buildFallbackClientReply(): string {
+  return "Понял вас. Подскажите, пожалуйста: для кого подарок и к какой дате нужно успеть? Хочу предложить подходящий формат.";
+}
+
 export async function processEmployeeMessage(
   sessionId: string,
   employeeText: string,
@@ -223,13 +227,19 @@ export async function processEmployeeMessage(
   const newRevealedFacts = updateRevealedFacts(sessionId, classified, scenario, revealedFacts);
 
   // Generate client reply
-  const clientReply = await llm.generateClientReply({
-    scenario,
-    history: [...history, { author: "employee", text: employeeText }],
-    clientState: newState,
-    lastManagerAction: classified,
-    revealedFacts: newRevealedFacts,
-  });
+  let clientReply: string;
+  try {
+    clientReply = await llm.generateClientReply({
+      scenario,
+      history: [...history, { author: "employee", text: employeeText }],
+      clientState: newState,
+      lastManagerAction: classified,
+      revealedFacts: newRevealedFacts,
+    });
+  } catch (e) {
+    logger.warn("generateClientReply failed, using fallback reply", { sessionId, error: String(e) });
+    clientReply = buildFallbackClientReply();
+  }
 
   // Save client message (with state before/after)
   const clientTurnIndex = turnIndex + 1;
