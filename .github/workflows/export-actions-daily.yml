@@ -1,20 +1,22 @@
-# Ежедневная выгрузка «Действия РОП» без VPS (GitHub Actions cron)
-# Время: 07:30 по Москве (04:30 UTC)
+# Ежедневная выгрузка «Действия РОП» → Google Sheets (без Mac / VPS)
+# 07:30 Europe/Moscow = 04:30 UTC
+# Ручной запуск: GitHub → Actions → Export ROP actions → Run workflow
 
 name: Export ROP actions
 
 on:
   schedule:
     - cron: "30 4 * * *"
-  workflow_dispatch: # ручной запуск в GitHub → Actions → Run workflow
+  workflow_dispatch:
+
+concurrency:
+  group: export-rop-actions
+  cancel-in-progress: false
 
 jobs:
   export-actions:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: gift-ai/backend
+    timeout-minutes: 60
 
     steps:
       - uses: actions/checkout@v4
@@ -22,18 +24,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: npm
+          cache-dependency-path: gift-ai/package-lock.json
 
       - name: Install dependencies
-        run: npm install
+        working-directory: gift-ai
+        run: npm ci
 
       - name: Export to Google Sheets
-        run: npx tsx src/export-actions.ts
+        working-directory: gift-ai
+        run: npm run export-actions -w backend
         env:
           BITRIX24_WEBHOOK_URL: ${{ secrets.BITRIX24_WEBHOOK_URL }}
+          BITRIX24_PORTAL_URL: ${{ secrets.BITRIX24_PORTAL_URL }}
           ACTIONS_SHEET_ID: ${{ secrets.ACTIONS_SHEET_ID }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           ANALYTICS_BASE_CURRENCY: EUR
-          ANALYTICS_COUNTRY_TAGS: другие
+          ANALYTICS_SALES_STAGE_IDS: WON
+          STATS_TIMEZONE: Europe/Moscow
           BITRIX_COUNTRY_FIELD: ${{ secrets.BITRIX_COUNTRY_FIELD }}
           BITRIX_DEAL_COUNTRY_FIELD: ${{ secrets.BITRIX_DEAL_COUNTRY_FIELD }}
-          ANALYTICS_SALES_STAGE_IDS: WON
