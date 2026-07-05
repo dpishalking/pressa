@@ -9,24 +9,184 @@ import {
   getUserProgress,
   getLeaderboard,
   listScenariosFromDb,
+  getActiveSessionForUser,
 } from "../training/training-service.js";
 import { getScenarioFromDb } from "../training/scenario-loader.js";
 import { importConversations, listImportedScenarioFiles } from "../training/conversation-importer.js";
+import { createInvite, buildInviteLink, getInvite } from "../training/invite-service.js";
+import {
+  createManager,
+  getManagerPracticeLinks,
+  ensureManagerPracticeLinks,
+  listManagers,
+} from "../training/manager-service.js";
 import { config } from "../config.js";
 import { getDb } from "../db/client.js";
 import { logger } from "../logger.js";
 
 export const trainerRouter = new Hono();
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function normalizeInviteToken(raw: string | undefined): string | null {
+  if (!raw?.trim()) return null;
+  const trimmed = raw.trim();
+  if (trimmed.startsWith("inv_")) return trimmed;
+  if (trimmed.startsWith("inv-")) return trimmed.replace(/^inv-/, "inv_");
+  return null;
+}
+
+function renderPracticePage(botLink: string, backUrl: string, managerName?: string): string {
+  const safeBack = escapeHtml(backUrl || "#");
+  const greeting = managerName
+    ? `<p class="greeting">Персональная ссылка для <strong>${escapeHtml(managerName)}</strong></p>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Практика — Retro Pressa</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #fafafa; color: #1a1a1a; margin: 0; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 32px 20px 48px; }
+    .back { display: inline-flex; align-items: center; gap: 8px; color: #666; text-decoration: none; font-size: 14px; margin-bottom: 32px; }
+    .back:hover { color: #1a1a1a; }
+    .eyebrow { color: #c0392b; font-size: 12px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; }
+    h1 { font-size: clamp(2rem, 5vw, 3rem); margin: 8px 0 0; line-height: 1.1; }
+    .card { margin-top: 40px; background: #fff; border: 1px solid #ececec; border-radius: 16px; padding: 28px 24px; box-shadow: 0 1px 3px rgba(0,0,0,.04); }
+    .card p { color: #444; line-height: 1.65; font-size: 17px; margin: 0; }
+    .greeting { margin-top: 12px !important; font-size: 15px !important; color: #666 !important; }
+    ul { margin: 20px 0 0; padding-left: 0; list-style: none; color: #555; line-height: 1.7; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; margin-top: 28px; padding: 16px 24px; background: #2481cc; color: #fff; text-decoration: none; border-radius: 12px; font-size: 16px; font-weight: 600; }
+    .btn:hover { background: #1a6ead; }
+    h2 { margin-top: 48px; font-size: 1.5rem; }
+    .muted { color: #888; font-size: 14px; margin-top: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="${safeBack}">← К этапам обучения</a>
+    <p class="eyebrow">Обучение менеджеров</p>
+    <h1>Практика</h1>
+    ${greeting}
+    <div class="card">
+      <p>В тренажёрном боте вы отрабатываете навыки продаж в безопасной атмосфере: ведёте диалог с AI-клиентом, получаете обратную связь и разбор после каждой ролевки. Никакого давления от реального клиента — только практика и рост.</p>
+      <ul>
+        <li>• Отработка квалификации, рекомендаций и работы с возражениями</li>
+        <li>• Ролевки на реальных сценариях Retro Pressa</li>
+        <li>• Оценка и подсказки от искусственного интеллекта после диалога</li>
+      </ul>
+      <a class="btn" href="${escapeHtml(botLink)}" target="_blank" rel="noopener noreferrer">Открыть тренажёр в Telegram ↗</a>
+    </div>
+    <h2>Тесты</h2>
+    <p class="muted">Раздел в разработке.</p>
+  </div>
+</body>
+</html>`;
+}
+
+trainerRouter.get("/practice", (c) => {
+  const backUrl = c.req.query("back") ?? "#";
+  const managerExternalId = c.req.query("manager")?.trim();
+  const managerName = c.req.query("name")?.trim();
+
+  if (managerExternalId) {
+    const links = managerName
+      ? ensureManagerPracticeLinks({
+          externalId: managerExternalId,
+          fullName: managerName,
+          serviceTag: c.req.query("service") ?? undefined,
+        })
+      : getManagerPracticeLinks(managerExternalId);
+
+    if (!links) {
+      return c.text("Менеджер не найден. Обратитесь к администратору обучения.", 404);
+    }
+    return c.html(renderPracticePage(links.botLink, backUrl, links.manager.fullName));
+  }
+
+  const invite = normalizeInviteToken(c.req.query("invite") ?? c.req.query("start") ?? c.req.query("token"));
+  const botUsername = (config.TRAINER_BOT_USERNAME || process.env.TRAINER_BOT_USERNAME || "dushnila12_bot").replace(/^@/, "");
+  const botLink = invite ? buildInviteLink(botUsername, invite) : `https://t.me/${botUsername}`;
+  return c.html(renderPracticePage(botLink, backUrl));
+});
+
+trainerRouter.get("/managers/:externalId/practice", (c) => {
+  const externalId = c.req.param("externalId");
+  const fullName = c.req.query("name")?.trim();
+  const serviceTag = c.req.query("service") ?? undefined;
+
+  const links = fullName
+    ? ensureManagerPracticeLinks({ externalId, fullName, serviceTag })
+    : getManagerPracticeLinks(externalId);
+
+  if (!links) return c.json({ error: "Manager not found" }, 404);
+  return c.json(links);
+});
+
+trainerRouter.post("/managers", async (c) => {
+  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+
+  try {
+    const body = await c.req.json() as {
+      externalId: string;
+      fullName: string;
+      serviceTag?: string;
+      managerTelegramId?: string;
+    };
+
+    if (!body.externalId?.trim() || !body.fullName?.trim()) {
+      return c.json({ error: "externalId and fullName required" }, 400);
+    }
+
+    const links = createManager({
+      externalId: body.externalId.trim(),
+      fullName: body.fullName.trim(),
+      serviceTag: body.serviceTag,
+      managerTelegramId: body.managerTelegramId,
+    });
+
+    return c.json(links);
+  } catch (e) {
+    logger.error("create manager error", { error: String(e) });
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
+trainerRouter.get("/managers", async (c) => {
+  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  const managers = listManagers();
+  return c.json({ managers });
+});
+
+function requireAdmin(c: { req: { header: (name: string) => string | undefined } }): boolean {
+  const key = c.req.header("x-admin-key") ?? c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
+  return Boolean(key && key === config.ADMIN_API_KEY);
+}
+
 // ─── User Registration ────────────────────────────────────────────────────────
 
 trainerRouter.post("/users/register", async (c) => {
   try {
-    const body = await c.req.json() as { telegramId: string; fullName: string; username?: string };
-    const { telegramId, fullName, username = "" } = body;
+    const body = await c.req.json() as {
+      telegramId: string;
+      fullName: string;
+      username?: string;
+      inviteToken?: string;
+    };
+    const { telegramId, fullName, username = "", inviteToken } = body;
     if (!telegramId || !fullName) return c.json({ error: "telegramId and fullName required" }, 400);
 
-    const userId = getOrCreateUser(String(telegramId), fullName, username);
+    const userId = getOrCreateUser(String(telegramId), fullName, username, inviteToken?.trim() || undefined);
     const user = getUserByTelegramId(String(telegramId));
     return c.json({ userId, user });
   } catch (e) {
@@ -98,6 +258,7 @@ trainerRouter.post("/sessions/start", async (c) => {
       sessionId: result.sessionId,
       scenario: safeScenario,
       initialMessage: result.initialMessage,
+      initialManagerReply: result.initialManagerReply,
       clientState: result.clientState,
     });
   } catch (e) {
@@ -206,6 +367,18 @@ trainerRouter.get("/sessions/:sessionId/evaluation", async (c) => {
 
 // ─── Progress ─────────────────────────────────────────────────────────────────
 
+trainerRouter.get("/users/:userId/active-session", async (c) => {
+  try {
+    const userId = c.req.param("userId");
+    const active = getActiveSessionForUser(userId);
+    if (!active) return c.json({ active: false });
+    return c.json({ active: true, ...active });
+  } catch (e) {
+    logger.error("get active session error", { error: String(e) });
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
 trainerRouter.get("/users/:userId/progress", async (c) => {
   try {
     const userId = c.req.param("userId");
@@ -249,6 +422,59 @@ trainerRouter.get("/leaderboard", async (c) => {
     logger.error("get leaderboard error", { error: String(e) });
     return c.json({ error: String(e) }, 500);
   }
+});
+
+// ─── Admin: Invites ───────────────────────────────────────────────────────────
+
+trainerRouter.post("/admin/invites", async (c) => {
+  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+
+  try {
+    const body = await c.req.json() as {
+      teamName: string;
+      serviceTag?: string;
+      managerTelegramId?: string;
+      presetFullName?: string;
+      maxUses?: number;
+      expiresAt?: string;
+    };
+
+    if (!body.teamName?.trim()) return c.json({ error: "teamName required" }, 400);
+
+    const invite = createInvite({
+      teamName: body.teamName.trim(),
+      serviceTag: body.serviceTag,
+      managerTelegramId: body.managerTelegramId,
+      presetFullName: body.presetFullName,
+      maxUses: body.maxUses,
+      expiresAt: body.expiresAt,
+    });
+
+    const botUsername = config.TRAINER_BOT_USERNAME || process.env.TRAINER_BOT_USERNAME || "";
+    const inviteLink = botUsername ? buildInviteLink(botUsername, invite.token) : null;
+    const publicBase = (config.PUBLIC_API_URL || `http://localhost:${config.PORT}`).replace(/\/$/, "");
+    const practicePageUrl = `${publicBase}/trainer/practice?invite=${invite.token}`;
+
+    return c.json({ invite, inviteLink, practicePageUrl });
+  } catch (e) {
+    logger.error("create invite error", { error: String(e) });
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
+trainerRouter.get("/admin/invites/:token", async (c) => {
+  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+
+  const token = c.req.param("token");
+  const invite = getInvite(token);
+  if (!invite) return c.json({ error: "Invite not found" }, 404);
+
+  const botUsername = config.TRAINER_BOT_USERNAME || process.env.TRAINER_BOT_USERNAME || "";
+  const inviteLink = botUsername ? buildInviteLink(botUsername, invite.token) : null;
+  const publicBase = (config.PUBLIC_API_URL || `http://localhost:${config.PORT}`).replace(/\/$/, "");
+  const practicePageUrl = `${publicBase}/trainer/practice?invite=${invite.token}`;
+
+  return c.json({ invite, inviteLink, practicePageUrl });
 });
 
 // ─── Admin: Team Analytics ────────────────────────────────────────────────────

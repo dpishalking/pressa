@@ -6,7 +6,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
   GEMINI_API_KEY: z.string().optional().default(""),
   GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
-  GEMINI_MODEL_FALLBACK: z.string().default("gemini-2.0-flash"),
+  GEMINI_MODEL_FALLBACK: z.string().default("gemini-2.5-flash-lite"),
   DATABASE_PATH: z.string().default("./data/gift-ai.db"),
   BITRIX24_WEBHOOK_URL: z.string().optional().default(""),
   BITRIX24_TAG: z.string().default("Подбор подарка AI"),
@@ -71,15 +71,24 @@ const envSchema = z.object({
   DASHBOARD_ORIGIN: z.string().optional().default(""),
   /** Путь к собранному dashboard dist для serveStatic (опционально). */
   DASHBOARD_DIST_PATH: z.string().optional().default(""),
+  /** Путь к JSON-экспорту реальных переписок для few-shot примеров и импорта сценариев. */
+  CONVERSATIONS_EXPORT_PATH: z.string().optional().default("./data/exports/retro-pressa-conversations-2026-06.json"),
+  /** Username trainer-бота без @ — для генерации invite-ссылок. */
+  TRAINER_BOT_USERNAME: z.string().optional().default(""),
+  /** Токен бота для уведомлений о результатах тренировок (обычно = TRAINER_BOT_TOKEN). */
+  TRAINER_NOTIFY_BOT_TOKEN: z.string().optional().default(""),
+  /** Telegram chat id РОПа/наставника — получает результаты тренировок команды. */
+  TRAINER_NOTIFY_TELEGRAM_IDS: z.string().optional().default(""),
 });
 
 export type AppConfig = Omit<
   z.infer<typeof envSchema>,
-  "ANALYTICS_COUNTRY_TAGS" | "ANALYTICS_SALES_STAGE_IDS" | "ROP_ALERTS_TELEGRAM_CHAT_IDS"
+  "ANALYTICS_COUNTRY_TAGS" | "ANALYTICS_SALES_STAGE_IDS" | "ROP_ALERTS_TELEGRAM_CHAT_IDS" | "TRAINER_NOTIFY_TELEGRAM_IDS"
 > & {
   ANALYTICS_COUNTRY_TAGS: string[];
   ANALYTICS_SALES_STAGE_IDS: string[];
   ROP_ALERTS_TELEGRAM_CHAT_IDS: string[];
+  TRAINER_NOTIFY_TELEGRAM_IDS: string[];
 };
 
 export function loadConfig(): AppConfig {
@@ -110,10 +119,20 @@ export function loadConfig(): AppConfig {
     .filter((id) => /^-?\d+$/.test(id));
   const mergedChatIds = telegramChatIds.length ? telegramChatIds : adminTelegramIds;
 
+  const trainerNotifyToken =
+    cfg.TRAINER_NOTIFY_BOT_TOKEN.trim() ||
+    process.env.TRAINER_BOT_TOKEN?.trim() ||
+    telegramBotToken;
+  const trainerNotifyChatIds = cfg.TRAINER_NOTIFY_TELEGRAM_IDS.split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
   return {
     ...cfg,
     BITRIX24_PORTAL_URL: portalUrl,
     ROP_ALERTS_TELEGRAM_BOT_TOKEN: telegramBotToken,
+    TRAINER_NOTIFY_BOT_TOKEN: trainerNotifyToken,
+    TRAINER_NOTIFY_TELEGRAM_IDS: trainerNotifyChatIds.length ? trainerNotifyChatIds : mergedChatIds,
     CRM_PROVIDER: cfg.BITRIX24_WEBHOOK_URL ? "bitrix24" : "none",
     ANALYTICS_COUNTRY_TAGS: cfg.ANALYTICS_COUNTRY_TAGS.split(",")
       .map((tag) => tag.trim())

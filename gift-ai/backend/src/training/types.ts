@@ -157,6 +157,7 @@ export interface CategoryScores {
 export type ManagerActionTag =
   | "asked_recipient"
   | "asked_occasion"
+  | "asked_birth_date"
   | "asked_deadline"
   | "asked_delivery"
   | "asked_interests"
@@ -170,6 +171,7 @@ export type ManagerActionTag =
   | "asked_closing_question"
   | "handled_objection"
   | "sent_catalogue_dump"
+  | "offered_before_birth_date"
   | "ignored_client_question"
   | "applied_pressure"
   | "gave_questionnaire"

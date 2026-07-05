@@ -136,12 +136,46 @@ CREATE TABLE IF NOT EXISTS training_assignments (
 CREATE INDEX IF NOT EXISTS idx_training_assignments_user ON training_assignments(assigned_to_user_id);
 CREATE INDEX IF NOT EXISTS idx_training_assignments_team ON training_assignments(assigned_to_team_id);
 CREATE INDEX IF NOT EXISTS idx_training_assignments_status ON training_assignments(status);
+
+CREATE TABLE IF NOT EXISTS training_invites (
+  token TEXT PRIMARY KEY,
+  team_id TEXT NOT NULL REFERENCES training_teams(id),
+  preset_full_name TEXT,
+  service_tag TEXT NOT NULL DEFAULT 'retro-pressa',
+  created_by_user_id TEXT,
+  max_uses INTEGER NOT NULL DEFAULT 1,
+  use_count INTEGER NOT NULL DEFAULT 0,
+  expires_at TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_invites_team ON training_invites(team_id);
+
+CREATE TABLE IF NOT EXISTS training_managers (
+  id TEXT PRIMARY KEY,
+  external_id TEXT NOT NULL UNIQUE,
+  full_name TEXT NOT NULL,
+  service_tag TEXT NOT NULL DEFAULT 'retro-pressa',
+  invite_token TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_managers_external ON training_managers(external_id);
 `;
 
 export function initTrainingDb(): void {
   const db = getDb();
   try {
     db.exec(TRAINING_SCHEMA);
+    for (const sql of [
+      `ALTER TABLE training_teams ADD COLUMN manager_telegram_id TEXT`,
+      `ALTER TABLE training_teams ADD COLUMN service_tag TEXT DEFAULT 'retro-pressa'`,
+      `ALTER TABLE training_users ADD COLUMN service_tag TEXT`,
+    ]) {
+      try { db.exec(sql); } catch { /* column exists */ }
+    }
     logger.info("Training DB tables initialized");
   } catch (e) {
     logger.error("Failed to init training DB", { error: String(e) });

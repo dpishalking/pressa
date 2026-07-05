@@ -3,6 +3,8 @@ import { logger } from "../logger.js";
 import { getLLMProvider } from "../llm/gemini-provider.js";
 import { applyStateRules, checkLost, checkPurchaseReady, getStateMoodLabel } from "./state-engine.js";
 import { getScenarioFromDb, listScenariosFromDb } from "./scenario-loader.js";
+import { redeemInvite } from "./invite-service.js";
+import { notifyTrainingSessionComplete } from "./training-notify.js";
 import type {
   TrainingScenario,
   ClientState,
@@ -22,20 +24,48 @@ function genId(): string {
 
 // ─── User Registration ────────────────────────────────────────────────────────
 
-export function getOrCreateUser(telegramId: string, fullName: string, username: string): string {
+export function getOrCreateUser(
+  telegramId: string,
+  fullName: string,
+  username: string,
+  inviteToken?: string,
+): string {
   const db = getDb();
-  const existing = db.prepare("SELECT id FROM training_users WHERE telegram_id = ?").get(telegramId) as { id: string } | undefined;
+  let teamId: string | null = null;
+  let serviceTag: string | null = null;
+  let resolvedName = fullName;
+
+  const existing = db.prepare("SELECT id, team_id FROM training_users WHERE telegram_id = ?")
+    .get(telegramId) as { id: string; team_id: string | null } | undefined;
+
+  const shouldRedeemInvite = Boolean(inviteToken && (!existing || !existing.team_id));
+
+  if (shouldRedeemInvite && inviteToken) {
+    try {
+      const redeemed = redeemInvite(inviteToken);
+      teamId = redeemed.teamId;
+      serviceTag = redeemed.serviceTag;
+      if (redeemed.presetFullName) resolvedName = redeemed.presetFullName;
+    } catch (e) {
+      logger.warn("Invite redemption failed", { inviteToken, error: String(e) });
+    }
+  }
+
   if (existing) {
-    db.prepare("UPDATE training_users SET full_name = ?, username = ?, updated_at = ? WHERE telegram_id = ?")
-      .run(fullName, username, new Date().toISOString(), telegramId);
+    db.prepare(`
+      UPDATE training_users
+      SET full_name = ?, username = ?, team_id = COALESCE(?, team_id),
+          service_tag = COALESCE(?, service_tag), updated_at = ?
+      WHERE telegram_id = ?
+    `).run(resolvedName, username, teamId, serviceTag, new Date().toISOString(), telegramId);
     return existing.id;
   }
 
   const id = genId();
   db.prepare(`
-    INSERT INTO training_users (id, telegram_id, full_name, username, role, is_active, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'employee', 1, ?, ?)
-  `).run(id, telegramId, fullName, username, new Date().toISOString(), new Date().toISOString());
+    INSERT INTO training_users (id, telegram_id, full_name, username, role, team_id, service_tag, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'employee', ?, ?, 1, ?, ?)
+  `).run(id, telegramId, resolvedName, username, teamId, serviceTag, new Date().toISOString(), new Date().toISOString());
   return id;
 }
 
@@ -44,9 +74,29 @@ export function getUserById(userId: string): { id: string; role: UserRole; full_
   return db.prepare("SELECT id, role, full_name FROM training_users WHERE id = ?").get(userId) as { id: string; role: UserRole; full_name: string } | null;
 }
 
-export function getUserByTelegramId(telegramId: string): { id: string; role: UserRole; full_name: string } | null {
+export function getUserByTelegramId(telegramId: string): {
+  id: string;
+  role: UserRole;
+  full_name: string;
+  team_id: string | null;
+  service_tag: string | null;
+  team_name: string | null;
+} | null {
   const db = getDb();
-  return db.prepare("SELECT id, role, full_name FROM training_users WHERE telegram_id = ?").get(telegramId) as { id: string; role: UserRole; full_name: string } | null;
+  const row = db.prepare(`
+    SELECT u.id, u.role, u.full_name, u.team_id, u.service_tag, t.name AS team_name
+    FROM training_users u
+    LEFT JOIN training_teams t ON t.id = u.team_id
+    WHERE u.telegram_id = ?
+  `).get(telegramId) as {
+    id: string;
+    role: UserRole;
+    full_name: string;
+    team_id: string | null;
+    service_tag: string | null;
+    team_name: string | null;
+  } | undefined;
+  return row ?? null;
 }
 
 // ─── Session Lifecycle ────────────────────────────────────────────────────────
@@ -62,6 +112,7 @@ export interface StartSessionResult {
   sessionId: string;
   scenario: TrainingScenario;
   initialMessage: string;
+  initialManagerReply?: string;
   clientState: ClientState;
 }
 
@@ -87,12 +138,40 @@ export async function startSession(opts: StartSessionOpts): Promise<StartSession
   // Save initial client message
   await saveMessage(sessionId, "client", scenario.initialMessage, 0);
 
+  let initialManagerReply: string | undefined;
+  if (mode === "mode_b") {
+    const llm = getLLMProvider();
+    initialManagerReply = await llm.generateManagerReply({
+      scenario,
+      history: [{ author: "client", text: scenario.initialMessage }],
+      clientState: initialState,
+    });
+    await saveMessage(sessionId, "employee", initialManagerReply, 1);
+  }
+
   return {
     sessionId,
     scenario,
     initialMessage: scenario.initialMessage,
+    initialManagerReply,
     clientState: initialState,
   };
+}
+
+export function getActiveSessionForUser(userId: string): {
+  sessionId: string;
+  scenarioId: string;
+  mode: TrainingMode;
+} | null {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT id, scenario_id, mode FROM training_sessions
+    WHERE user_id = ? AND status = 'active'
+    ORDER BY started_at DESC LIMIT 1
+  `).get(userId) as { id: string; scenario_id: string; mode: TrainingMode } | undefined;
+
+  if (!row) return null;
+  return { sessionId: row.id, scenarioId: row.scenario_id, mode: row.mode };
 }
 
 export interface ProcessMessageResult {
@@ -324,6 +403,10 @@ export async function finishSession(sessionId: string): Promise<EvaluationResult
   // Update skill scores
   await updateSkillScores(String(session.user_id), evaluation);
 
+  void notifyTrainingSessionComplete(sessionId, evaluation).catch((e) => {
+    logger.warn("Training notify failed", { sessionId, error: String(e) });
+  });
+
   return evaluation;
 }
 
@@ -475,6 +558,12 @@ function getRevealedFacts(sessionId: string): string[] {
       );
       revealed.push(...recipientFacts);
     }
+    if (classified.actions.includes("asked_birth_date")) {
+      const birthDateFacts = scenario.hiddenFacts.filter(
+        (f) => /родил|рождения|\d{1,2}[.\s]\d{1,2}[.\s]\d{4}/i.test(f),
+      );
+      revealed.push(...birthDateFacts);
+    }
     if (classified.actions.includes("asked_deadline")) {
       const deadlineFacts = scenario.hiddenFacts.filter(
         (f) => f.toLowerCase().includes("срок") || f.toLowerCase().includes("дата") ||
@@ -502,6 +591,12 @@ function updateRevealedFacts(
 ): string[] {
   const newFacts = [...current];
 
+  if (classified.actions.includes("asked_birth_date")) {
+    const birthDateFacts = scenario.hiddenFacts.filter(
+      (f) => /родил|рождения|birth|\d{1,2}[.\s]\d{1,2}[.\s]\d{4}/i.test(f),
+    );
+    newFacts.push(...birthDateFacts);
+  }
   if (classified.actions.includes("asked_recipient") || classified.actions.includes("asked_interests")) {
     const facts = scenario.hiddenFacts.filter(
       (f) => f.toLowerCase().includes("получател") || f.toLowerCase().includes("интерес"),
