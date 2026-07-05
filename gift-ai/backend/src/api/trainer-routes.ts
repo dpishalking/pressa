@@ -222,8 +222,8 @@ trainerRouter.get("/scenarios", async (c) => {
 
 trainerRouter.post("/scenarios/generate", async (c) => {
   try {
-    const body = await c.req.json() as { template?: string };
-    const template = body.template ?? "gift_search";
+    const body = await c.req.json() as { template?: string; type?: string; scenarioType?: string; kind?: string };
+    const template = body.template ?? body.type ?? body.scenarioType ?? body.kind ?? "gift_search";
     const result = await generateScenarioForTemplate(template);
     const { hiddenFacts: _, ...safeScenario } = result.scenario;
     return c.json({
@@ -233,6 +233,50 @@ trainerRouter.post("/scenarios/generate", async (c) => {
     });
   } catch (e) {
     logger.error("generate scenario error", { error: String(e) });
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
+trainerRouter.post("/sessions/start-from-template", async (c) => {
+  try {
+    const body = await c.req.json() as {
+      userId?: string;
+      telegramId?: string;
+      fullName?: string;
+      username?: string;
+      template?: string;
+      type?: string;
+      scenarioType?: string;
+      kind?: string;
+      mode?: string;
+    };
+    const template = body.template ?? body.type ?? body.scenarioType ?? body.kind ?? "gift_search";
+
+    let userId = body.userId?.trim();
+    if (!userId && body.telegramId) {
+      userId = getOrCreateUser(
+        String(body.telegramId),
+        body.fullName?.trim() || "Пользователь",
+        body.username?.trim() || "",
+      );
+    }
+    if (!userId) return c.json({ error: "userId or telegramId required" }, 400);
+
+    const mode = body.mode === "mode_b" ? "mode_b" : "mode_a";
+    const { scenarioId } = await generateScenarioForTemplate(template);
+    const result = await startSession({ userId, scenarioId, mode });
+    const { hiddenFacts: _, ...safeScenario } = result.scenario;
+
+    return c.json({
+      sessionId: result.sessionId,
+      scenarioId,
+      scenario: safeScenario,
+      initialMessage: result.initialMessage,
+      initialManagerReply: result.initialManagerReply,
+      clientState: result.clientState,
+    });
+  } catch (e) {
+    logger.error("start from template error", { error: String(e) });
     return c.json({ error: String(e) }, 500);
   }
 });

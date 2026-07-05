@@ -61,6 +61,24 @@
 
 ---
 
+## Сервис 3 — Trainer bot (@dushnila12_bot)
+
+1. В том же проекте Railway: **+ New Service** → **GitHub Repo** → репозиторий `pressa`
+2. **Root Directory:** `gift-ai/trainer-bot`
+3. **Variables:**
+
+| Переменная | Значение |
+|------------|----------|
+| `TRAINER_BOT_TOKEN` или `BOT_TOKEN` | токен @dushnila12_bot от @BotFather |
+| `API_URL` | URL backend из шага 1, **без слэша** — например `https://pressa-production-d394.up.railway.app` |
+
+⚠️ Без `API_URL` бот ходит на `localhost` и падает с «Не удалось сгенерировать сценарий».
+
+4. Deploy. В логах: `Trainer bot started` (или аналог).
+5. **Только один** экземпляр бота с этим токеном (не запускайте `npm run dev:trainer` локально).
+
+---
+
 ## CSO-бот и алерты РОПа (@rpcs0_bot)
 
 **Важно:** команды `/start`, `/settings` и алерты обрабатывает **сам backend** — отдельный сервис `telegram-bot` для этого не нужен. Достаточно задеплоить **только API**.

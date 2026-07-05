@@ -1,4 +1,8 @@
-const API_URL = (process.env.API_URL ?? "http://localhost:3100").replace(/\/$/, "");
+const API_URL = (
+  process.env.API_URL ??
+  process.env.TRAINER_API_URL ??
+  "https://pressa-production-d394.up.railway.app"
+).replace(/\/$/, "");
 const TRAINER_BASE = `${API_URL}/trainer`;
 
 async function apiGet<T>(path: string): Promise<T> {
@@ -139,6 +143,20 @@ export const trainerApi = {
       { template },
       60_000,
     ),
+
+  startFromTemplate: (
+    userId: string,
+    template: string,
+    mode: "mode_a" | "mode_b" = "mode_a",
+  ) =>
+    apiPost<{
+      sessionId: string;
+      scenarioId: string;
+      scenario: TrainingScenarioSafe;
+      initialMessage: string;
+      initialManagerReply?: string;
+      clientState: Record<string, number>;
+    }>("/sessions/start-from-template", { userId, template, mode }, 60_000),
 
   startSession: (userId: string, scenarioId: string, mode: "mode_a" | "mode_b", hintMode?: boolean) =>
     apiPost<{

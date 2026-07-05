@@ -189,7 +189,21 @@ async function startTemplateTraining(ctx: Context, uid: string, template: string
   }
 
   await ctx.reply("⏳ Загружаю сценарий…");
-  const generated = await trainerApi.generateScenario(template);
+  let generated;
+  try {
+    generated = await trainerApi.generateScenario(template);
+  } catch (e) {
+    console.error("[generateScenario]", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/fetch failed|ECONNREFUSED|localhost|API 5/i.test(msg)) {
+      await ctx.reply(
+        "Сервер тренажёра недоступен. Администратору: проверьте API_URL на Railway (должен быть https://pressa-production-d394.up.railway.app).",
+        { reply_markup: templateScenarioKeyboard() },
+      );
+      return;
+    }
+    throw e;
+  }
   const mode: "mode_a" | "mode_b" = "mode_a";
   const result = await trainerApi.startSession(internalId, generated.scenarioId, mode);
 
