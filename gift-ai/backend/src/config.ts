@@ -46,7 +46,7 @@ const envSchema = z.object({
   ROP_ALERT_LEAD_NO_RESPONSE_MINUTES: z.coerce.number().default(61),
   ROP_ALERT_CHAT_NO_RESPONSE_MINUTES: z.coerce.number().default(30),
   /** Не алертить по лидам старше N дней (0 = без лимита). */
-  ROP_ALERT_LEAD_MAX_AGE_DAYS: z.coerce.number().default(7),
+  ROP_ALERT_LEAD_MAX_AGE_DAYS: z.coerce.number().default(1),
   /** Не алертить по чатам, где последнее сообщение клиента старше N дней. */
   ROP_ALERT_CHAT_MAX_AGE_DAYS: z.coerce.number().default(3),
   /** Часы отправки алертов по Москве (начало включительно, конец не включительно). */

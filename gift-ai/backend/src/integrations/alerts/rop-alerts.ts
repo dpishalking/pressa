@@ -42,7 +42,7 @@ import {
   type BitrixWebhookPayload,
 } from "./bitrix-webhook-parse.js";
 import { getContactLtvEur } from "./contact-ltv.js";
-import { eur, portalLink, sendTelegramAlert, shouldFinalizeAlert } from "./telegram-notify.js";
+import { eur, portalLink, sendTelegramAlert, shouldFinalizePerSubscriberAlert, shouldFinalizeAlert } from "./telegram-notify.js";
 import { subscriberWantsAlert } from "./subscriber-settings.js";
 import { isWithinRopAlertWindow } from "./alert-hours.js";
 
@@ -230,6 +230,8 @@ export async function scheduleInvoiceWatch(invoiceId: string, cfg?: RopAlertsCon
 
 async function fireLeadNoResponseAlert(leadId: string, cfg: RopAlertsConfig, payload: Record<string, unknown>): Promise<void> {
   const alertKey = `lead_no_response:${leadId}`;
+  if (wasAlertSent(alertKey)) return;
+
   const eligible = cfg.telegramChatIds.filter((chatId) => subscriberWantsAlert(chatId, "leads"));
   if (allEligibleChatsDelivered(alertKey, eligible)) return;
 
@@ -254,11 +256,12 @@ async function fireLeadNoResponseAlert(leadId: string, cfg: RopAlertsConfig, pay
   if (amountEur > 0) lines.splice(3, 0, `Сумма: ${eur(amountEur)}`);
   lines.push("", "Открыть в Bitrix:", portalLink(cfg, `/crm/lead/details/${leadId}/`));
 
-  await sendTelegramAlert(cfg, lines.join("\n"), {
+  const result = await sendTelegramAlert(cfg, lines.join("\n"), {
     alertKey,
     alertType: "leads",
     ignoreSubscribedAt: true,
   });
+  if (shouldFinalizePerSubscriberAlert(result)) markAlertSent(alertKey, "lead_no_response");
 }
 
 async function fireInvoiceUnpaidAlert(

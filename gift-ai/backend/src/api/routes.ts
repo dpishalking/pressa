@@ -18,8 +18,8 @@ import { resolveTelegramChatIds, ropAlertsConfig, ropAlertsEnabled } from "../in
 import { handleBitrixWebhook } from "../integrations/alerts/rop-alerts.js";
 import { handleCsoBotUpdate } from "../integrations/alerts/cso-bot.js";
 import { sendTelegramAlert, eur } from "../integrations/alerts/telegram-notify.js";
-import { listTelegramSubscriberDetails } from "../integrations/alerts/telegram-subscribers.js";
-import { getSubscriberSettings } from "../integrations/alerts/subscriber-settings.js";
+import { listTelegramSubscriberDetails, addTelegramSubscriber } from "../integrations/alerts/telegram-subscribers.js";
+import { getSubscriberSettings, setSubscriberActive, setSubscriberAlertToggle } from "../integrations/alerts/subscriber-settings.js";
 import { dashboard } from "./dashboard-routes.js";
 import { trainerRouter } from "./trainer-routes.js";
 
@@ -437,6 +437,23 @@ admin.get("/rop-alerts/subscribers", (c) => {
       .filter((sub) => !username || sub.username.toLowerCase() === username);
 
     return c.json({ chatIds, subscribers });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
+});
+
+admin.post("/rop-alerts/subscribers/:chatId/mute", (c) => {
+  try {
+    if (!ropAlertsEnabled()) {
+      return c.json({ error: "ROP alerts не настроены" }, 400);
+    }
+    const chatId = c.req.param("chatId");
+    addTelegramSubscriber({ chatId });
+    setSubscriberActive(chatId, false);
+    setSubscriberAlertToggle(chatId, "leads", false);
+    setSubscriberAlertToggle(chatId, "chats", false);
+    return c.json({ ok: true, chatId, active: false });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return c.json({ error: msg }, 500);

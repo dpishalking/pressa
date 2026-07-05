@@ -20,8 +20,8 @@ export type SubscriberSettings = {
 const DEFAULTS: Omit<SubscriberSettings, "chatId"> = {
   active: true,
   pausedUntil: null,
-  leads: true,
-  chats: true,
+  leads: false,
+  chats: false,
   invoices: true,
   invoiceSent: true,
   payments: true,
@@ -118,7 +118,7 @@ export function setSubscriberAlertToggle(chatId: string, key: AlertTypeKey, enab
 
 export function subscriberWantsAlert(chatId: string, alertType: AlertTypeKey): boolean {
   const sub = getTelegramSubscriber(chatId);
-  if (!sub) return true;
+  if (!sub) return false;
 
   const settings = getSubscriberSettings(chatId);
   if (!settings.active) return false;
