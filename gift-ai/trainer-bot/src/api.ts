@@ -12,12 +12,12 @@ async function apiGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function apiPost<T>(path: string, body: unknown): Promise<T> {
+async function apiPost<T>(path: string, body: unknown, timeoutMs = 60_000): Promise<T> {
   const res = await fetch(`${TRAINER_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(60_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!res.ok) {
     const text = await res.text();
@@ -79,7 +79,8 @@ export type EvaluationResult = {
   exampleNextMessage?: string;
 };
 
-export type ProcessResult = {
+export type ProcessModeAResult = {
+  mode: "mode_a";
   clientReply: string;
   clientState: Record<string, number>;
   stateChanges: Array<{ field: string; delta: number; reason: string }>;
@@ -96,10 +97,33 @@ export type ProcessResult = {
   };
 };
 
+export type ProcessModeBResult = {
+  mode: "mode_b";
+  managerReply: string;
+  clientState: Record<string, number>;
+  turnIndex: number;
+};
+
+export type ProcessResult = ProcessModeAResult | ProcessModeBResult;
+
 // API functions
 export const trainerApi = {
-  registerUser: (telegramId: number, fullName: string, username: string) =>
-    apiPost<{ userId: string }>("/users/register", { telegramId: String(telegramId), fullName, username }),
+  registerUser: (telegramId: number, fullName: string, username: string, inviteToken?: string) =>
+    apiPost<{
+      userId: string;
+      user?: {
+        id: string;
+        full_name: string;
+        team_id: string | null;
+        service_tag: string | null;
+        team_name: string | null;
+      };
+    }>("/users/register", {
+      telegramId: String(telegramId),
+      fullName,
+      username,
+      ...(inviteToken ? { inviteToken } : {}),
+    }),
 
   getScenarios: (difficulty?: string, skill?: string) =>
     apiGet<{ scenarios: TrainingScenarioSafe[]; total: number }>(
@@ -110,7 +134,13 @@ export const trainerApi = {
     apiGet<TrainingScenarioSafe>(`/scenarios/${id}`),
 
   startSession: (userId: string, scenarioId: string, mode: "mode_a" | "mode_b", hintMode?: boolean) =>
-    apiPost<{ sessionId: string; scenario: TrainingScenarioSafe; initialMessage: string; clientState: Record<string, number> }>(
+    apiPost<{
+      sessionId: string;
+      scenario: TrainingScenarioSafe;
+      initialMessage: string;
+      initialManagerReply?: string;
+      clientState: Record<string, number>;
+    }>(
       "/sessions/start",
       { userId, scenarioId, mode, hintMode },
     ),
@@ -119,7 +149,7 @@ export const trainerApi = {
     apiPost<ProcessResult>(`/sessions/${sessionId}/message`, { text }),
 
   finishSession: (sessionId: string) =>
-    apiPost<{ evaluation: EvaluationResult }>(`/sessions/${sessionId}/finish`, {}),
+    apiPost<{ evaluation: EvaluationResult }>(`/sessions/${sessionId}/finish`, {}, 120_000),
 
   getSession: (sessionId: string) =>
     apiGet<{ session: TrainingSession; messages: Array<{ author: string; text: string; turn_index: number }> }>(
@@ -137,6 +167,11 @@ export const trainerApi = {
       successRate: number;
       streakDays: number;
     }>(`/users/${userId}/progress`),
+
+  getActiveSession: (userId: string) =>
+    apiGet<{ active: false } | { active: true; sessionId: string; scenarioId: string; mode: "mode_a" | "mode_b" }>(
+      `/users/${userId}/active-session`,
+    ),
 
   getHistory: (userId: string) =>
     apiGet<{ sessions: Array<Record<string, unknown>> }>(`/users/${userId}/history`),
