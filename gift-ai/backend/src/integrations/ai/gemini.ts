@@ -24,7 +24,7 @@ function modelsToTry(): string[] {
 
 async function callGeminiOnce(
   model: string,
-  opts: { system: string; user: string; json?: boolean },
+  opts: { system: string; user: string; json?: boolean; timeoutMs?: number },
 ): Promise<GeminiResult> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.GEMINI_API_KEY}`;
 
@@ -42,7 +42,7 @@ async function callGeminiOnce(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(25_000),
+    signal: AbortSignal.timeout(opts.timeoutMs ?? 25_000),
   });
 
   if (!res.ok) {
@@ -69,6 +69,7 @@ export async function callGemini(opts: {
   system: string;
   user: string;
   json?: boolean;
+  timeoutMs?: number;
 }): Promise<GeminiResult> {
   if (!config.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY не настроен");

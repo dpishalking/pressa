@@ -74,13 +74,18 @@ async function ensureUser(
   }
 }
 
-async function restoreActiveSession(uid: string, internalUserId: string): Promise<void> {
+async function restoreActiveSession(uid: string, internalUserId: string, force = false): Promise<void> {
   const session = getSession(uid);
-  if (session.screen === "in_session" && session.currentSessionId) return;
+  if (!force && session.screen === "in_session" && session.currentSessionId) return;
 
   try {
     const active = await trainerApi.getActiveSession(internalUserId);
-    if (!active.active) return;
+    if (!active.active) {
+      if (session.screen === "in_session") {
+        setSession(uid, { screen: "main_menu", currentSessionId: undefined });
+      }
+      return;
+    }
 
     setSession(uid, {
       screen: "in_session",
@@ -90,6 +95,71 @@ async function restoreActiveSession(uid: string, internalUserId: string): Promis
     });
   } catch (e) {
     console.error("[restoreActiveSession]", e);
+  }
+}
+
+async function finishTraining(ctx: Context, uid: string): Promise<void> {
+  let internalId: string;
+  try {
+    ({ userId: internalId } = await ensureUser(ctx));
+  } catch (e) {
+    console.error("[finish ensureUser]", e);
+    await ctx.reply("Не удалось подключиться к серверу. Попробуйте позже.");
+    return;
+  }
+
+  await restoreActiveSession(uid, internalId, true);
+  const session = getSession(uid);
+  if (!session.currentSessionId) {
+    await ctx.reply("Нет активной тренировки.", { reply_markup: mainMenuKeyboard() });
+    return;
+  }
+
+  const sessionId = session.currentSessionId;
+  await ctx.reply("⏳ Оцениваю вашу работу… Это займёт 10–20 секунд.");
+
+  let evaluation;
+  try {
+    const result = await trainerApi.finishSession(sessionId);
+    evaluation = result.evaluation;
+  } catch (e) {
+    console.error("[finish session api]", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/404|Session not found|500.*Session not found/i.test(msg)) {
+      resetToMainMenuSession(uid);
+      await ctx.reply(
+        "Сессия устарела или уже завершена. Нажмите /train и начните сценарий заново.",
+        { reply_markup: mainMenuKeyboard() },
+      );
+      return;
+    }
+    await ctx.reply("Не удалось завершить тренировку. Попробуйте ещё раз.");
+    return;
+  }
+
+  setSession(uid, {
+    screen: "awaiting_evaluation",
+    pendingEvaluationSessionId: sessionId,
+    currentSessionId: undefined,
+  });
+
+  const evalText = formatEvaluation(evaluation);
+  try {
+    await ctx.reply(evalText, {
+      parse_mode: "HTML",
+      reply_markup: postSessionKeyboard(),
+    });
+  } catch (e) {
+    console.error("[finish session reply]", e);
+    const plain = evalText.replace(/<[^>]+>/g, "");
+    try {
+      await ctx.reply(plain, { reply_markup: postSessionKeyboard() });
+    } catch {
+      await ctx.reply(
+        `Результат: ${evaluation.totalScore ?? "?"}/100`,
+        { reply_markup: postSessionKeyboard() },
+      );
+    }
   }
 }
 
@@ -183,8 +253,17 @@ bot.command("start", async (ctx) => {
 bot.command("train", async (ctx) => {
   const uid = userId(ctx);
   try {
-    await ensureUser(ctx);
-    setSession(uid, { screen: "select_mode" });
+    const { userId: internalId } = await ensureUser(ctx);
+    await restoreActiveSession(uid, internalId);
+    const restored = getSession(uid);
+    if (restored.currentSessionId && restored.screen === "in_session") {
+      await ctx.reply(
+        "Тренировка уже идёт. Напишите следующее сообщение или нажмите «Завершить».",
+        { reply_markup: inSessionKeyboard(restored.currentMode ?? "mode_a", restored.hintMode ?? false) },
+      );
+      return;
+    }
+    setSession(uid, { screen: "select_mode", currentSessionId: undefined, currentScenarioId: undefined });
     await ctx.reply(
       "🎭 <b>Начать ролевку</b>\n\nВыберите режим тренировки:",
       { parse_mode: "HTML", reply_markup: modeKeyboard() },
@@ -267,19 +346,8 @@ bot.command("rating", async (ctx) => {
 
 bot.command("finish", async (ctx) => {
   const uid = userId(ctx);
-  const session = getSession(uid);
-  if (!session.currentSessionId) {
-    await ctx.reply("Нет активной тренировки.", { reply_markup: mainMenuKeyboard() });
-    return;
-  }
   try {
-    await ctx.reply("⏳ Оцениваю вашу работу… Это займёт несколько секунд.");
-    const result = await trainerApi.finishSession(session.currentSessionId);
-    setSession(uid, { screen: "awaiting_evaluation", pendingEvaluationSessionId: session.currentSessionId, currentSessionId: undefined });
-    await ctx.reply(formatEvaluation(result.evaluation), {
-      parse_mode: "HTML",
-      reply_markup: postSessionKeyboard(),
-    });
+    await finishTraining(ctx, uid);
   } catch (e) {
     console.error("[finish]", e);
     await ctx.reply("Не удалось завершить тренировку.");
@@ -565,23 +633,8 @@ bot.on("callback_query:data", async (ctx) => {
     }
 
     if (data === "session:finish") {
-      const session = getSession(uid);
-      if (!session.currentSessionId) {
-        await ctx.reply("Нет активной тренировки.", { reply_markup: mainMenuKeyboard() });
-        return;
-      }
       try {
-        await ctx.reply("⏳ Оцениваю вашу работу… Это займёт 10–20 секунд.");
-        const result = await trainerApi.finishSession(session.currentSessionId);
-        setSession(uid, {
-          screen: "awaiting_evaluation",
-          pendingEvaluationSessionId: session.currentSessionId,
-          currentSessionId: undefined,
-        });
-        await ctx.reply(formatEvaluation(result.evaluation), {
-          parse_mode: "HTML",
-          reply_markup: postSessionKeyboard(),
-        });
+        await finishTraining(ctx, uid);
       } catch (e) {
         console.error("[finish session]", e);
         await ctx.reply("Не удалось завершить тренировку. Попробуйте ещё раз.");

@@ -222,6 +222,7 @@ export class GeminiLLMProvider implements LLMProvider {
           system,
           user: `Оцени диалог менеджера. ${hintsNote}`,
           json: true,
+          timeoutMs: 90_000,
         });
         const parsed = parseJsonSafe<EvaluationResult>(result.text, fallback);
 
@@ -230,6 +231,15 @@ export class GeminiLLMProvider implements LLMProvider {
         if (hintsUsed > 0) {
           parsed.totalScore = Math.max(0, parsed.totalScore - hintsUsed * 2);
         }
+        parsed.categoryScores = parsed.categoryScores ?? fallback.categoryScores;
+        parsed.strengths = Array.isArray(parsed.strengths) ? parsed.strengths : [];
+        parsed.mistakes = Array.isArray(parsed.mistakes) ? parsed.mistakes : [];
+        parsed.missedQuestions = Array.isArray(parsed.missedQuestions) ? parsed.missedQuestions : [];
+        parsed.clientEmotions = Array.isArray(parsed.clientEmotions) ? parsed.clientEmotions : [];
+        parsed.turningPoints = Array.isArray(parsed.turningPoints) ? parsed.turningPoints : [];
+        parsed.stateChanges = Array.isArray(parsed.stateChanges) ? parsed.stateChanges : [];
+        parsed.betterReplies = Array.isArray(parsed.betterReplies) ? parsed.betterReplies : [];
+        parsed.finalResult = parsed.finalResult ?? "incomplete";
         return parsed;
       } catch (e) {
         logger.warn("evaluateSession attempt failed", { attempt, error: String(e) });

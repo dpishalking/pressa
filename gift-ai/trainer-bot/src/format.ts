@@ -46,7 +46,25 @@ export function moodEmoji(mood: string): string {
   return map[mood] ?? "😐";
 }
 
-export function formatEvaluation(e: EvaluationResult): string {
+function normalizeEvaluation(raw: EvaluationResult): EvaluationResult {
+  return {
+    totalScore: Number.isFinite(raw.totalScore) ? raw.totalScore : 0,
+    categoryScores: raw.categoryScores ?? {},
+    strengths: Array.isArray(raw.strengths) ? raw.strengths : [],
+    mistakes: Array.isArray(raw.mistakes) ? raw.mistakes : [],
+    missedQuestions: Array.isArray(raw.missedQuestions) ? raw.missedQuestions : [],
+    clientEmotions: Array.isArray(raw.clientEmotions) ? raw.clientEmotions : [],
+    turningPoints: Array.isArray(raw.turningPoints) ? raw.turningPoints : [],
+    stateChanges: Array.isArray(raw.stateChanges) ? raw.stateChanges : [],
+    betterReplies: Array.isArray(raw.betterReplies) ? raw.betterReplies : [],
+    finalResult: raw.finalResult ?? "incomplete",
+    clientFeeling: raw.clientFeeling,
+    exampleNextMessage: raw.exampleNextMessage,
+  };
+}
+
+export function formatEvaluation(raw: EvaluationResult): string {
+  const e = normalizeEvaluation(raw);
   const emoji = scoreEmoji(e.totalScore);
   const resultLabel: Record<string, string> = {
     ready_to_order: "🎉 Клиент готов оформить заказ",
@@ -110,10 +128,13 @@ export function formatEvaluation(e: EvaluationResult): string {
 
   if (e.betterReplies.length > 0) {
     const br = e.betterReplies[0];
-    text += `<b>💡 Лучший ответ вместо:</b>\n`;
-    text += `<i>«${escapeHtml(br.originalText.slice(0, 80))}»</i>\n`;
-    text += `<b>→ Можно было:</b> ${escapeHtml(br.suggestion)}\n`;
-    text += `<i>${escapeHtml(br.reason)}</i>\n\n`;
+    if (br?.originalText && br?.suggestion) {
+      text += `<b>💡 Лучший ответ вместо:</b>\n`;
+      text += `<i>«${escapeHtml(br.originalText.slice(0, 80))}»</i>\n`;
+      text += `<b>→ Можно было:</b> ${escapeHtml(br.suggestion)}\n`;
+      if (br.reason) text += `<i>${escapeHtml(br.reason)}</i>\n`;
+      text += "\n";
+    }
   }
 
   if (e.exampleNextMessage) {
