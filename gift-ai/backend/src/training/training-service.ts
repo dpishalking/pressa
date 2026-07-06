@@ -5,7 +5,7 @@ import { applyStateRules, checkLost, checkPurchaseReady, getStateMoodLabel } fro
 import { getScenarioFromDb, listScenariosFromDb } from "./scenario-loader.js";
 import { redeemInvite } from "./invite-service.js";
 import { notifyTrainingSessionComplete } from "./training-notify.js";
-import { buildFallbackClientReply } from "./client-reply-fallback.js";
+import { buildFallbackClientReply, sanitizeClientReply } from "./client-reply-fallback.js";
 import { resolveSessionEvaluation } from "./session-evaluation.js";
 import type {
   TrainingScenario,
@@ -235,21 +235,28 @@ export async function processEmployeeMessage(
 
   // Generate client reply
   let clientReply: string;
+  const replyContext = {
+    employeeText,
+    history,
+    clientState: newState,
+    scenario,
+  };
   try {
-    clientReply = await llm.generateClientReply({
+    const generated = await llm.generateClientReply({
       scenario,
       history: [...history, { author: "employee", text: employeeText }],
       clientState: newState,
       lastManagerAction: classified,
       revealedFacts: newRevealedFacts,
     });
+    clientReply = sanitizeClientReply(generated, replyContext);
   } catch (e) {
     logger.warn("generateClientReply failed, using fallback reply", { sessionId, error: String(e) });
-    clientReply = buildFallbackClientReply({ employeeText, history, clientState: newState, scenario });
+    clientReply = buildFallbackClientReply(replyContext);
   }
 
   if (!clientReply.trim()) {
-    clientReply = buildFallbackClientReply({ employeeText, history, clientState: newState, scenario });
+    clientReply = buildFallbackClientReply(replyContext);
   }
 
   // Save client message (with state before/after)

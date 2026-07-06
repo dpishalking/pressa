@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFallbackClientReply } from "../client-reply-fallback.js";
+import { buildFallbackClientReply, looksLikeManagerReply, sanitizeClientReply } from "../client-reply-fallback.js";
 import type { ClientState, TrainingScenario } from "../types.js";
 import { DEFAULT_CLIENT_STATE } from "../types.js";
 
@@ -50,5 +50,22 @@ describe("buildFallbackClientReply", () => {
     });
 
     expect(reply).toMatch(/странн|не понял|подарок/i);
+  });
+
+  it("replaces manager-voice LLM reply with client fallback", () => {
+    const history = [{ author: "client", text: scenario.initialMessage }];
+    const badLlmReply =
+      "Понял вас. Подскажите, пожалуйста: для кого подарок и к какой дате нужно успеть? Хочу предложить подходящий формат.";
+    expect(looksLikeManagerReply(badLlmReply)).toBe(true);
+
+    const reply = sanitizeClientReply(badLlmReply, {
+      employeeText: "бублики любит",
+      history,
+      clientState: DEFAULT_CLIENT_STATE,
+      scenario,
+    });
+
+    expect(reply).toMatch(/дедуш/i);
+    expect(reply).not.toMatch(/хочу предложить/i);
   });
 });

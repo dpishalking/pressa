@@ -3,6 +3,29 @@ import type { ClientState, TrainingScenario } from "./types.js";
 const SALES_KEYWORDS =
   /газет|архив|подар|дат|репродук|журнал|достав|цен|руб|₽|фото|подбер|вариант|оригинал|комплект|книг|оформ|счёт|счет/i;
 
+const MANAGER_VOICE_RE =
+  /хочу предложить|подскажите.*(для кого|дату|дата)|уточните.*(достав|дату)|проверю архив|могу предложить|какой формат вам|подходящий формат|оформим заказ|итого.*руб|стоимость доставки/i;
+
+export function looksLikeManagerReply(text: string): boolean {
+  return MANAGER_VOICE_RE.test(text.trim());
+}
+
+export function sanitizeClientReply(
+  reply: string,
+  opts: {
+    employeeText: string;
+    history: Array<{ author: string; text: string }>;
+    clientState: ClientState;
+    scenario: TrainingScenario;
+  },
+): string {
+  const trimmed = reply.trim();
+  if (!trimmed || looksLikeManagerReply(trimmed)) {
+    return buildFallbackClientReply(opts);
+  }
+  return trimmed;
+}
+
 export function buildFallbackClientReply(opts: {
   employeeText: string;
   history: Array<{ author: string; text: string }>;
