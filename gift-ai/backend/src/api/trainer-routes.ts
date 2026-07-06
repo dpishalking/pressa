@@ -21,6 +21,7 @@ import {
   ensureManagerPracticeLinks,
   listManagers,
   listManagerSessionsByExternalId,
+  getLmsLinkStatus,
 } from "../training/manager-service.js";
 import { config } from "../config.js";
 import { getDb } from "../db/client.js";
@@ -135,20 +136,6 @@ trainerRouter.get("/managers/:externalId/practice", (c) => {
   return c.json(links);
 });
 
-trainerRouter.get("/managers/:externalId/sessions", async (c) => {
-  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
-
-  try {
-    const externalId = c.req.param("externalId");
-    const sessions = listManagerSessionsByExternalId(externalId);
-    return c.json({ sessions });
-  } catch (e) {
-    logger.error("get manager sessions error", { error: String(e) });
-    return c.json({ error: String(e) }, 500);
-  }
-});
-
-
 trainerRouter.post("/managers", async (c) => {
   if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
 
@@ -193,6 +180,18 @@ trainerRouter.get("/managers/:externalId/sessions", async (c) => {
     return c.json({ sessions });
   } catch (e) {
     logger.error("list manager sessions error", { error: String(e) });
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
+trainerRouter.get("/managers/:externalId/lms-status", async (c) => {
+  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+
+  try {
+    const externalId = c.req.param("externalId");
+    return c.json(getLmsLinkStatus(externalId));
+  } catch (e) {
+    logger.error("get lms link status error", { error: String(e) });
     return c.json({ error: String(e) }, 500);
   }
 });

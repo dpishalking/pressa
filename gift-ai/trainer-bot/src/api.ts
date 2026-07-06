@@ -1,9 +1,11 @@
 const API_URL = (
   process.env.API_URL ??
   process.env.TRAINER_API_URL ??
-  "https://pressa-production-d394.up.railway.app"
+  "http://85.92.111.202:3100"
 ).replace(/\/$/, "");
 const TRAINER_BASE = `${API_URL}/trainer`;
+
+console.log(`[trainer-bot] API_URL=${API_URL}`);
 
 async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${TRAINER_BASE}${path}`, {
@@ -128,6 +130,7 @@ export const trainerApi = {
         team_id: string | null;
         service_tag: string | null;
         team_name: string | null;
+        lms_external_id: string | null;
       };
     }>("/users/register", {
       telegramId: String(telegramId),

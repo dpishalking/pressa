@@ -189,3 +189,47 @@ export function listManagerSessionsByExternalId(externalId: string): ManagerBotS
     mistakes: JSON.parse(String(row.mistakes_json ?? "[]")) as string[],
   }));
 }
+
+export type LmsLinkStatus = {
+  externalId: string;
+  managerRegistered: boolean;
+  linkedTelegramUsers: Array<{
+    id: string;
+    telegramId: string;
+    fullName: string;
+    lmsExternalId: string | null;
+    updatedAt: string;
+  }>;
+  sessionCount: number;
+};
+
+export function getLmsLinkStatus(externalId: string): LmsLinkStatus {
+  const db = getDb();
+  const manager = getManagerByExternalId(externalId);
+  const linkedUsers = db.prepare(`
+    SELECT id, telegram_id, full_name, lms_external_id, updated_at
+    FROM training_users
+    WHERE lms_external_id = ?
+    ORDER BY updated_at DESC
+  `).all(externalId) as Array<Record<string, unknown>>;
+
+  const sessionRow = db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM training_sessions s
+    JOIN training_users u ON u.id = s.user_id
+    WHERE u.lms_external_id = ?
+  `).get(externalId) as { count: number } | undefined;
+
+  return {
+    externalId,
+    managerRegistered: Boolean(manager),
+    linkedTelegramUsers: linkedUsers.map((row) => ({
+      id: String(row.id),
+      telegramId: String(row.telegram_id),
+      fullName: String(row.full_name),
+      lmsExternalId: row.lms_external_id ? String(row.lms_external_id) : null,
+      updatedAt: String(row.updated_at),
+    })),
+    sessionCount: Number(sessionRow?.count ?? 0),
+  };
+}

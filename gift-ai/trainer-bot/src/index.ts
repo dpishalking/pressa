@@ -55,11 +55,14 @@ function parseStartPayload(text: string | undefined): { inviteToken?: string; lm
 async function ensureUser(
   ctx: { from?: { id?: number; first_name?: string; last_name?: string; username?: string } },
   startPayload?: { inviteToken?: string; lmsExternalId?: string } | null,
-): Promise<{ userId: string; user?: { full_name: string; team_name: string | null; service_tag: string | null } }> {
+): Promise<{ userId: string; user?: { full_name: string; team_name: string | null; service_tag: string | null; lms_external_id: string | null } }> {
   const uid = userId(ctx);
   const session = getSession(uid);
   const inviteToken = startPayload?.inviteToken;
-  const lmsExternalId = startPayload?.lmsExternalId;
+  const lmsExternalId = startPayload?.lmsExternalId ?? session.lmsExternalId;
+  if (startPayload?.lmsExternalId) {
+    setSession(uid, { lmsExternalId: startPayload.lmsExternalId });
+  }
   if (session.userId && !inviteToken && !lmsExternalId) return { userId: session.userId };
 
   try {
@@ -78,103 +81,28 @@ async function ensureUser(
   }
 }
 
-async function syncSessionFromBackend(uid: string, internalUserId: string): Promise<void> {
-  const local = getSession(uid);
-
-  try {
-    const active = await trainerApi.getActiveSession(internalUserId);
-    if (active.active) {
-      setSession(uid, {
-        screen: "in_session",
-        currentSessionId: active.sessionId,
-        currentScenarioId: active.scenarioId,
-        currentMode: active.mode,
-      });
-      return;
-    }
-
-    if (local.currentSessionId) {
-      try {
-        const detail = await trainerApi.getSession(local.currentSessionId);
-        const status = detail.session.status;
-        if (status === "active" || status === "completed") {
-          setSession(uid, {
-            screen: "in_session",
-            currentSessionId: local.currentSessionId,
-            currentScenarioId: detail.session.scenarioId,
-            currentMode: (detail.session.mode as "mode_a" | "mode_b") ?? local.currentMode,
-          });
-          return;
-        }
-      } catch {
-        // stale local session id
-      }
-    }
-
-    if (local.screen === "in_session" || local.currentSessionId) {
-      setSession(uid, {
-        screen: "main_menu",
-        currentSessionId: undefined,
-        currentScenarioId: undefined,
-      });
-    }
-  } catch (e) {
-    console.error("[syncSessionFromBackend]", e);
-  }
-}
-
-/** @deprecated use syncSessionFromBackend */
-async function restoreActiveSession(uid: string, internalUserId: string, _force = false): Promise<void> {
-  await syncSessionFromBackend(uid, internalUserId);
-}
-
-async function resolveFinishSessionId(
-  internalUserId: string,
-  localSessionId?: string,
-): Promise<string | null> {
-  try {
-    const active = await trainerApi.getActiveSession(internalUserId);
-    if (active.active) return active.sessionId;
-  } catch (e) {
-    console.error("[resolveFinishSessionId active]", e);
-  }
-
-  if (!localSessionId) return null;
-
-  try {
-    const detail = await trainerApi.getSession(localSessionId);
-    const status = detail.session.status;
-    if (status === "active" || status === "completed") return localSessionId;
-  } catch (e) {
-    console.error("[resolveFinishSessionId local]", e);
-  }
-
-  return null;
-}
-
-async function replyActiveSessionPrompt(ctx: Context, uid: string): Promise<void> {
+async function restoreActiveSession(uid: string, internalUserId: string, force = false): Promise<void> {
   const session = getSession(uid);
-  if (!session.currentSessionId) return;
+  if (!force && session.screen === "in_session" && session.currentSessionId) return;
 
-  const keyboard = inSessionKeyboard(session.currentMode ?? "mode_a", session.hintMode ?? false);
   try {
-    const detail = await trainerApi.getSession(session.currentSessionId);
-    const lastClient = [...(detail.messages ?? [])].reverse().find((m) => m.author === "client");
-    if (lastClient) {
-      await ctx.reply(
-        `Тренировка продолжается.\n\n👤 <b>Клиент:</b>\n${escapeHtml(lastClient.text)}\n\n💼 Напишите ответ или нажмите «Завершить».`,
-        { parse_mode: "HTML", reply_markup: keyboard },
-      );
+    const active = await trainerApi.getActiveSession(internalUserId);
+    if (!active.active) {
+      if (session.screen === "in_session") {
+        setSession(uid, { screen: "main_menu", currentSessionId: undefined });
+      }
       return;
     }
-  } catch (e) {
-    console.error("[replyActiveSessionPrompt]", e);
-  }
 
-  await ctx.reply(
-    "Тренировка уже идёт. Напишите следующее сообщение или нажмите «Завершить».",
-    { reply_markup: keyboard },
-  );
+    setSession(uid, {
+      screen: "in_session",
+      currentSessionId: active.sessionId,
+      currentScenarioId: active.scenarioId,
+      currentMode: active.mode,
+    });
+  } catch (e) {
+    console.error("[restoreActiveSession]", e);
+  }
 }
 
 async function finishTraining(ctx: Context, uid: string): Promise<void> {
@@ -187,19 +115,14 @@ async function finishTraining(ctx: Context, uid: string): Promise<void> {
     return;
   }
 
-  await syncSessionFromBackend(uid, internalId);
-
-  const sessionId = await resolveFinishSessionId(internalId, getSession(uid).currentSessionId);
-  if (!sessionId) {
-    resetToMainMenuSession(uid);
-    await ctx.reply(
-      "Сессия устарела. Начните новую тренировку через «Начать ролевку».",
-      { reply_markup: mainMenuKeyboard() },
-    );
+  await restoreActiveSession(uid, internalId, true);
+  const session = getSession(uid);
+  if (!session.currentSessionId) {
+    await ctx.reply("Нет активной тренировки.", { reply_markup: mainMenuKeyboard() });
     return;
   }
 
-  setSession(uid, { currentSessionId: sessionId, screen: "in_session" });
+  const sessionId = session.currentSessionId;
   await ctx.reply("⏳ Оцениваю вашу работу… Это займёт 10–20 секунд.");
 
   let evaluation;
@@ -212,7 +135,7 @@ async function finishTraining(ctx: Context, uid: string): Promise<void> {
     if (/404|Session not found|500.*Session not found/i.test(msg)) {
       resetToMainMenuSession(uid);
       await ctx.reply(
-        "Сессия устарела. Начните новую тренировку через «Начать ролевку».",
+        "Сессия устарела или уже завершена. Нажмите /train и начните сценарий заново.",
         { reply_markup: mainMenuKeyboard() },
       );
       return;
@@ -266,7 +189,10 @@ async function startTemplateTraining(ctx: Context, uid: string, template: string
   await restoreActiveSession(uid, internalId);
   const active = getSession(uid);
   if (active.currentSessionId && active.screen === "in_session") {
-    await replyActiveSessionPrompt(ctx, uid);
+    await ctx.reply(
+      "Тренировка уже идёт. Напишите следующее сообщение или нажмите «Завершить».",
+      { reply_markup: inSessionKeyboard(active.currentMode ?? "mode_a", active.hintMode ?? false) },
+    );
     return;
   }
 
@@ -308,6 +234,10 @@ async function startTemplateTraining(ctx: Context, uid: string, template: string
   introText += `<b>═══ Начало диалога ═══</b>`;
 
   await ctx.reply(introText, { parse_mode: "HTML" });
+  await ctx.reply(SESSION_BUTTONS_HELP, {
+    parse_mode: "HTML",
+    reply_markup: inSessionKeyboard(mode, false),
+  });
   await showSessionDialogStart(ctx, mode, result, false);
 }
 
@@ -378,9 +308,16 @@ bot.command("start", async (ctx) => {
     const { userId: internalUserId, user } = await ensureUser(ctx, startPayload);
 
     if (startPayload?.lmsExternalId && user) {
-      await ctx.reply(
-        "✅ Аккаунт привязан к кабинету Retro Pressa. Результаты ролевок будут видны вашему руководителю.",
-      );
+      const linkedId = user.lms_external_id ?? null;
+      if (linkedId === startPayload.lmsExternalId) {
+        await ctx.reply(
+          "✅ Аккаунт привязан к кабинету Retro Pressa. Результаты ролевок будут видны вашему руководителю.",
+        );
+      } else {
+        await ctx.reply(
+          "⚠️ Не удалось привязать аккаунт к кабинету. Откройте бота ещё раз по персональной ссылке с этапа «Практика».",
+        );
+      }
     } else if (startPayload?.inviteToken && user) {
       const serviceLabel = user.service_tag === "yourstorymagazine" ? "YourStory Magazine" : "Retro Pressa";
       const lines = [
@@ -409,7 +346,10 @@ bot.command("train", async (ctx) => {
     await restoreActiveSession(uid, internalId);
     const restored = getSession(uid);
     if (restored.currentSessionId && restored.screen === "in_session") {
-      await replyActiveSessionPrompt(ctx, uid);
+      await ctx.reply(
+        "Тренировка уже идёт. Напишите следующее сообщение или нажмите «Завершить».",
+        { reply_markup: inSessionKeyboard(restored.currentMode ?? "mode_a", restored.hintMode ?? false) },
+      );
       return;
     }
     setSession(uid, { screen: "select_mode", currentSessionId: undefined, currentScenarioId: undefined });
@@ -463,7 +403,10 @@ bot.on("callback_query:data", async (ctx) => {
       await restoreActiveSession(uid, internalId);
       const restored = getSession(uid);
       if (restored.currentSessionId && restored.screen === "in_session") {
-        await replyActiveSessionPrompt(ctx, uid);
+        await ctx.reply(
+          "Тренировка уже идёт. Просто напишите следующее сообщение в чат или нажмите «Завершить диалог».",
+          { reply_markup: inSessionKeyboard(restored.currentMode ?? "mode_a", restored.hintMode ?? false) },
+        );
         return;
       }
 
@@ -485,7 +428,7 @@ bot.on("callback_query:data", async (ctx) => {
       return;
     }
 
-    // In-session actions (simulated manager actions)
+    // In-session actions (simulated actions)
     if (data.startsWith("session:action:")) {
       const action = data.slice("session:action:".length);
       const session = getSession(uid);
@@ -540,6 +483,7 @@ bot.on("callback_query:data", async (ctx) => {
     }
 
     if (data === "session:hint") {
+      // Hint is sent along with message processing if hintMode is on
       await ctx.answerCallbackQuery({ text: "Подсказка придёт вместе со следующим ответом клиента" });
       return;
     }
@@ -609,7 +553,7 @@ bot.on("message:text", async (ctx) => {
 
   try {
     const { userId: internalId } = await ensureUser(ctx);
-    await syncSessionFromBackend(uid, internalId);
+    await restoreActiveSession(uid, internalId);
     session = getSession(uid);
   } catch {
     await ctx.reply("Не удалось подключиться к серверу. Запустите backend и попробуйте снова.");
@@ -636,7 +580,10 @@ bot.on("message:text", async (ctx) => {
 
         await ctx.reply(
           `💼 <b>Менеджер (AI):</b>\n${escapeHtml(result.managerReply)}`,
-          { parse_mode: "HTML", reply_markup: inSessionKeyboard("mode_b") },
+          {
+            parse_mode: "HTML",
+            reply_markup: inSessionKeyboard("mode_b"),
+          },
         );
         return;
       }
@@ -682,13 +629,7 @@ bot.on("message:text", async (ctx) => {
     } catch (e) {
       console.error("[in session message]", e);
       const msg = e instanceof Error ? e.message : "";
-      if (/404|Session not found|not active/i.test(msg)) {
-        resetToMainMenuSession(uid);
-        await ctx.reply(
-          "Сессия устарела. Начните новую тренировку через «Начать ролевку».",
-          { reply_markup: mainMenuKeyboard() },
-        );
-      } else if (/timeout|503|429/i.test(msg)) {
+      if (/timeout|503|429/i.test(msg)) {
         await ctx.reply("AI временно перегружен. Подождите 10 секунд и отправьте сообщение ещё раз.");
       } else if (/500|fetch failed|ECONNREFUSED|API/i.test(msg)) {
         await ctx.reply("Сервер тренажёра недоступен. Проверьте, что backend запущен (npm run dev), и отправьте сообщение снова.");

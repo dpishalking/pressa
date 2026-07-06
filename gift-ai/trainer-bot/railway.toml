@@ -1,3 +1,7 @@
+# Railway Variables (required for rp-bi):
+# API_URL=http://85.92.111.202:3100
+# TRAINER_BOT_TOKEN=...
+
 [build]
 builder = "NIXPACKS"
 buildCommand = "npm install && npm run build"

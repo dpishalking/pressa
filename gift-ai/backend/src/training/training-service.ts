@@ -104,10 +104,11 @@ export function getUserByTelegramId(telegramId: string): {
   team_id: string | null;
   service_tag: string | null;
   team_name: string | null;
+  lms_external_id: string | null;
 } | null {
   const db = getDb();
   const row = db.prepare(`
-    SELECT u.id, u.role, u.full_name, u.team_id, u.service_tag, t.name AS team_name
+    SELECT u.id, u.role, u.full_name, u.team_id, u.service_tag, u.lms_external_id, t.name AS team_name
     FROM training_users u
     LEFT JOIN training_teams t ON t.id = u.team_id
     WHERE u.telegram_id = ?
@@ -118,6 +119,7 @@ export function getUserByTelegramId(telegramId: string): {
     team_id: string | null;
     service_tag: string | null;
     team_name: string | null;
+    lms_external_id: string | null;
   } | undefined;
   return row ?? null;
 }

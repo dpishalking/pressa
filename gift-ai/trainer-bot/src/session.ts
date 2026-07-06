@@ -12,6 +12,7 @@ export type TrainerScreen =
 
 export interface TrainerSession {
   userId?: string;
+  lmsExternalId?: string;
   screen: TrainerScreen;
   currentSessionId?: string;
   currentScenarioId?: string;
