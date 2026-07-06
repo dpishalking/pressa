@@ -47,11 +47,14 @@ export function moodEmoji(mood: string): string {
 }
 
 function normalizeEvaluation(raw: EvaluationResult): EvaluationResult {
+  const mistakes = (Array.isArray(raw.mistakes) ? raw.mistakes : []).filter(
+    (m) => !/технический сбой|не удалось получить оценку/i.test(m),
+  );
   return {
     totalScore: Number.isFinite(raw.totalScore) ? raw.totalScore : 0,
     categoryScores: raw.categoryScores ?? {},
     strengths: Array.isArray(raw.strengths) ? raw.strengths : [],
-    mistakes: Array.isArray(raw.mistakes) ? raw.mistakes : [],
+    mistakes,
     missedQuestions: Array.isArray(raw.missedQuestions) ? raw.missedQuestions : [],
     clientEmotions: Array.isArray(raw.clientEmotions) ? raw.clientEmotions : [],
     turningPoints: Array.isArray(raw.turningPoints) ? raw.turningPoints : [],
