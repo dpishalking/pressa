@@ -13,6 +13,7 @@ import type {
   ClassifyManagerActionOpts,
   EvaluateSessionOpts,
   GenerateScenarioOpts,
+  GenerateLiveScenarioOpts,
   GenerateHintOpts,
   HintResult,
 } from "./base.js";
@@ -304,6 +305,30 @@ export class GeminiLLMProvider implements LLMProvider {
     const user = `Создай сценарий${difficulty ? ` уровня ${difficulty}` : ""}${skill ? ` для навыка ${skill}` : ""} на основе диалога выше.`;
 
     const result = await callGemini({ system, user, json: true });
+    return parseJsonSafe<Partial<TrainingScenario>>(result.text, {});
+  }
+
+  async generateLiveScenario(opts: GenerateLiveScenarioOpts): Promise<Partial<TrainingScenario>> {
+    const templateType =
+      opts.template === "date_archive"
+        ? "Проверка архива по дате рождения"
+        : "Выявление потребности и предложение подарка";
+
+    let system = loadPrompt("system-scenario-generator-live.md")
+      .replace(/\{\{TEMPLATE_TYPE\}\}/g, templateType)
+      .replace(/\{\{TEMPLATE_BRIEF\}\}/g, opts.templateBrief)
+      .replace(/\{\{TRAINING_SKILL\}\}/g, opts.trainingSkill)
+      .replace(/\{\{UNIQUE_TOKEN\}\}/g, opts.seed.uniqueToken)
+      .replace(/\{\{BUYER_HINT\}\}/g, opts.seed.buyer)
+      .replace(/\{\{RECIPIENT_HINT\}\}/g, opts.seed.recipient)
+      .replace(/\{\{LOCATION_HINT\}\}/g, opts.seed.location)
+      .replace(/\{\{OCCASION_HINT\}\}/g, opts.seed.occasion)
+      .replace(/\{\{DATE_HINT\}\}/g, opts.seed.date);
+
+    const user =
+      "Сгенерируй полностью новый сценарий. initialMessage должен звучать по-разному от типовых примеров.";
+
+    const result = await callGemini({ system, user, json: true, timeoutMs: 45_000 });
     return parseJsonSafe<Partial<TrainingScenario>>(result.text, {});
   }
 
