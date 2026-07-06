@@ -5,6 +5,7 @@ import { applyStateRules, checkLost, checkPurchaseReady, getStateMoodLabel } fro
 import { getScenarioFromDb, listScenariosFromDb } from "./scenario-loader.js";
 import { redeemInvite } from "./invite-service.js";
 import { notifyTrainingSessionComplete } from "./training-notify.js";
+import { reconcileEvaluationWithHistory } from "./evaluation-reconcile.js";
 import type {
   TrainingScenario,
   ClientState,
@@ -382,12 +383,16 @@ export async function finishSession(sessionId: string): Promise<EvaluationResult
     }));
 
   const llm = getLLMProvider();
-  const evaluation = await llm.evaluateSession({
+  const wasManuallyFinished = session.status === "active";
+  const rawEvaluation = await llm.evaluateSession({
     scenario,
     history,
     stateHistory,
     finalState,
     hintsUsed,
+  });
+  const evaluation = reconcileEvaluationWithHistory(rawEvaluation, history, {
+    manuallyFinished: wasManuallyFinished,
   });
 
   // Save evaluation

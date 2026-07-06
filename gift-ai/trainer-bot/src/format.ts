@@ -80,28 +80,34 @@ export function formatEvaluation(raw: EvaluationResult): string {
   ];
 
   for (const s of e.strengths.slice(0, 2)) {
-    lines.push(`✅ ${escapeHtml(truncate(s, 120))}`);
+    lines.push(`✅ ${escapeHtml(truncateAtWord(s, 140))}`);
   }
 
   for (const m of e.mistakes.slice(0, 2)) {
-    lines.push(`⚠️ ${escapeHtml(truncate(m, 120))}`);
-  }
-
-  const tip =
-    e.betterReplies[0]?.suggestion?.trim() ||
-    e.exampleNextMessage?.trim() ||
-    e.missedQuestions[0]?.trim();
-  if (tip) {
-    lines.push(`💡 ${escapeHtml(truncate(tip, 160))}`);
+    lines.push(`⚠️ ${escapeHtml(truncateAtWord(m, 140))}`);
   }
 
   return lines.join("\n");
 }
 
-function truncate(text: string, max: number): string {
+/** Full suggestion text — send as a separate message so it is never cut off mid-word. */
+export function formatEvaluationTip(raw: EvaluationResult): string | null {
+  const e = normalizeEvaluation(raw);
+  const tip =
+    e.betterReplies[0]?.suggestion?.trim() ||
+    e.exampleNextMessage?.trim() ||
+    e.missedQuestions[0]?.trim();
+  if (!tip) return null;
+  return `💡 ${escapeHtml(tip)}`;
+}
+
+function truncateAtWord(text: string, max: number): string {
   const t = text.trim();
   if (t.length <= max) return t;
-  return `${t.slice(0, max - 1)}…`;
+  const slice = t.slice(0, max);
+  const lastSpace = slice.lastIndexOf(" ");
+  const cut = lastSpace > max * 0.6 ? slice.slice(0, lastSpace) : slice;
+  return `${cut}…`;
 }
 
 export function formatProgress(p: {

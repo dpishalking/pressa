@@ -9,6 +9,7 @@ import {
 import { trainerApi } from "./api.js";
 import {
   formatEvaluation,
+  formatEvaluationTip,
   difficultyLabel,
   skillLabel,
   moodEmoji,
@@ -136,22 +137,25 @@ async function finishTraining(ctx: Context, uid: string): Promise<void> {
   });
 
   const evalText = formatEvaluation(evaluation);
-  try {
-    await ctx.reply(evalText, {
-      parse_mode: "HTML",
-      reply_markup: postSessionKeyboard(),
-    });
-  } catch (e) {
-    console.error("[finish session reply]", e);
-    const plain = evalText.replace(/<[^>]+>/g, "");
+  const tipText = formatEvaluationTip(evaluation);
+  const replyMarkup = postSessionKeyboard();
+
+  async function sendEval(text: string, withKeyboard: boolean): Promise<void> {
     try {
-      await ctx.reply(plain, { reply_markup: postSessionKeyboard() });
-    } catch {
-      await ctx.reply(
-        `Результат: ${evaluation.totalScore ?? "?"}/100`,
-        { reply_markup: postSessionKeyboard() },
-      );
+      await ctx.reply(text, {
+        parse_mode: "HTML",
+        reply_markup: withKeyboard ? replyMarkup : undefined,
+      });
+    } catch (e) {
+      console.error("[finish session reply]", e);
+      const plain = text.replace(/<[^>]+>/g, "");
+      await ctx.reply(plain, { reply_markup: withKeyboard ? replyMarkup : undefined });
     }
+  }
+
+  await sendEval(evalText, !tipText);
+  if (tipText) {
+    await sendEval(tipText, true);
   }
 }
 
