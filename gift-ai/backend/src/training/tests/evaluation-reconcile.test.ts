@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { reconcileEvaluationWithHistory } from "../evaluation-reconcile.js";
+import {
+  reconcileEvaluationWithHistory,
+  buildRuleBasedEvaluation,
+  isTechnicalFallbackEvaluation,
+} from "../evaluation-reconcile.js";
 import type { EvaluationResult } from "../types.js";
 
 const baseEval = (): EvaluationResult => ({
@@ -59,5 +63,30 @@ describe("reconcileEvaluationWithHistory", () => {
 
     const out = reconcileEvaluationWithHistory(evalWithStrength, history);
     expect(out.strengths).toHaveLength(1);
+  });
+
+  it("detects technical fallback from LLM", () => {
+    expect(
+      isTechnicalFallbackEvaluation({
+        ...baseEval(),
+        mistakes: ["Не удалось получить оценку от AI — технический сбой"],
+      }),
+    ).toBe(true);
+  });
+
+  it("builds rule-based evaluation when LLM fails", () => {
+    const history = [
+      { author: "client", text: "Маме 70 лет, хотим подарок по году рождения" },
+      { author: "employee", text: "все будет хорошо!" },
+      { author: "client", text: "А что вы можете предложить?" },
+    ];
+
+    const out = buildRuleBasedEvaluation(history, { manuallyFinished: true });
+
+    expect(out.totalScore).toBeLessThanOrEqual(35);
+    expect(out.strengths).toEqual([]);
+    expect(out.mistakes[0]).toMatch(/не по теме/i);
+    expect(out.exampleNextMessage).toMatch(/дату рождения/i);
+    expect(out.finalResult).toBe("lost");
   });
 });

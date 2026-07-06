@@ -1,4 +1,4 @@
-import type { EvaluationResult } from "./types.js";
+import type { ClientState, EvaluationResult, FinalResult } from "./types.js";
 
 export interface ReconcileOpts {
   /** Session ended via «Завершить» while still active (not auto lost/sale). */
@@ -124,4 +124,140 @@ export function reconcileEvaluationWithHistory(
   ensureCompleteTip(result, clientContext);
 
   return result;
+}
+
+const TECHNICAL_FAILURE_RE = /технический сбой|не удалось получить оценку/i;
+
+export function isTechnicalFallbackEvaluation(evaluation: EvaluationResult): boolean {
+  return evaluation.mistakes.some((m) => TECHNICAL_FAILURE_RE.test(m));
+}
+
+/** Heuristic scoring when Gemini evaluation fails — still useful feedback for the manager. */
+export function buildRuleBasedEvaluation(
+  history: Array<{ author: string; text: string }>,
+  opts: {
+    hintsUsed?: number;
+    manuallyFinished?: boolean;
+    finalState?: ClientState;
+  } = {},
+): EvaluationResult {
+  const managerTexts = history
+    .filter((m) => m.author === "employee")
+    .map((m) => m.text.trim())
+    .filter(Boolean);
+  const managerLower = managerTexts.join("\n").toLowerCase();
+  const clientContext = history
+    .filter((m) => m.author === "client")
+    .map((m) => m.text)
+    .join(" ");
+  const lastAuthor = history.length > 0 ? history[history.length - 1].author : null;
+  const weakReply = isWeakManagerReply(managerTexts);
+
+  const strengths: string[] = [];
+  const mistakes: string[] = [];
+  const missedQuestions: string[] = [];
+
+  let qualification = 0;
+  let recommendation = 0;
+  let productClarity = 0;
+  let visual = 0;
+  let pricing = 0;
+  let closing = 0;
+  let objectionHandling = 0;
+
+  const askedQuestions = /\?|уточн|подскаж|какой|когда|где|сколько|интерес|повод|получ/i.test(managerLower);
+  if (askedQuestions) {
+    qualification += 12;
+    strengths.push("Задал уточняющие вопросы");
+  } else {
+    mistakes.push("Не задал уточняющих вопросов");
+    if (/дат|год|архив|юбил|рожд/i.test(clientContext)) {
+      missedQuestions.push("Точная дата рождения получателя");
+    } else {
+      missedQuestions.push("Для кого подарок и какой повод");
+    }
+  }
+
+  if (/газет|архив|репродук|журнал|комплект|книг|подар/i.test(managerLower)) {
+    recommendation += 12;
+    strengths.push("Предложил продукт из ассортимента");
+  } else {
+    mistakes.push("Не предложил конкретный продукт");
+  }
+
+  if (/оригинал|репродук|персонализ|формат/i.test(managerLower)) {
+    productClarity += 10;
+    strengths.push("Объяснил формат подарка");
+  }
+
+  if (/фото|показ|визуал|пример|отправ/i.test(managerLower)) {
+    visual += 8;
+    strengths.push("Предложил визуал или пример");
+  } else {
+    mistakes.push("Не предложил визуал");
+  }
+
+  if (/руб|₽|цен|стоим|достав|итого|срок/i.test(managerLower)) {
+    pricing += 10;
+    strengths.push("Озвучил цену или сроки");
+  }
+
+  if (/оформ|счёт|счет|оплат|следующ|готовы|оформим/i.test(managerLower)) {
+    closing += 8;
+    strengths.push("Предложил следующий шаг");
+  }
+
+  if (/понимаю|соглас|действительно|можно|вариант/i.test(managerLower) && managerTexts.length > 1) {
+    objectionHandling += 6;
+  }
+
+  if (/поздрав|юбил|рад|важн|особен/i.test(managerLower)) {
+    qualification += 4;
+    if (strengths.length < 2) strengths.push("Проявил эмпатию к поводу");
+  }
+
+  let totalScore =
+    qualification + recommendation + productClarity + visual + pricing + closing + objectionHandling;
+  if (weakReply) totalScore = Math.min(totalScore, 30);
+  if (managerTexts.length === 0) totalScore = 5;
+
+  const hintsUsed = opts.hintsUsed ?? 0;
+  if (hintsUsed > 0) totalScore = Math.max(0, totalScore - hintsUsed * 2);
+
+  let finalResult: FinalResult = "thinking";
+  const readiness = opts.finalState?.readinessToBuy ?? 0;
+  if (readiness >= 80) finalResult = "ready_to_order";
+  else if (readiness >= 55) finalResult = "interested";
+  else if (weakReply || totalScore < 35) finalResult = "lost";
+  else if (opts.manuallyFinished && lastAuthor === "client") finalResult = "thinking";
+
+  const exampleNextMessage = defaultExampleReply(clientContext);
+
+  const draft: EvaluationResult = {
+    totalScore,
+    categoryScores: {
+      qualification: Math.min(20, qualification),
+      recommendation: Math.min(20, recommendation),
+      productClarity: Math.min(15, productClarity),
+      visual: Math.min(10, visual),
+      pricing: Math.min(15, pricing),
+      closing: Math.min(10, closing),
+      objectionHandling: Math.min(10, objectionHandling),
+    },
+    strengths: strengths.slice(0, 2),
+    mistakes: mistakes.slice(0, 3),
+    missedQuestions,
+    clientEmotions: [],
+    turningPoints: [],
+    stateChanges: [],
+    betterReplies: managerTexts[0]
+      ? [{ originalText: managerTexts[0], suggestion: exampleNextMessage, reason: "Более предметный ответ клиенту" }]
+      : [],
+    finalResult,
+    exampleNextMessage,
+  };
+
+  return reconcileEvaluationWithHistory(draft, history, {
+    manuallyFinished: opts.manuallyFinished,
+  });
 }

@@ -24,7 +24,7 @@ function modelsToTry(): string[] {
 
 async function callGeminiOnce(
   model: string,
-  opts: { system: string; user: string; json?: boolean; timeoutMs?: number; maxOutputTokens?: number },
+  opts: { system: string; user: string; json?: boolean; timeoutMs?: number; maxOutputTokens?: number; temperature?: number },
 ): Promise<GeminiResult> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.GEMINI_API_KEY}`;
 
@@ -32,7 +32,7 @@ async function callGeminiOnce(
     system_instruction: { parts: [{ text: opts.system }] },
     contents: [{ role: "user", parts: [{ text: opts.user }] }],
     generationConfig: {
-      temperature: 0.7,
+      temperature: opts.temperature ?? 0.7,
       maxOutputTokens: opts.maxOutputTokens ?? 4096,
       ...(opts.json ? { responseMimeType: "application/json" } : {}),
     },
@@ -71,6 +71,7 @@ export async function callGemini(opts: {
   json?: boolean;
   timeoutMs?: number;
   maxOutputTokens?: number;
+  temperature?: number;
   /** Prefer fallback model first (helps when primary is overloaded). */
   preferFallbackModel?: boolean;
 }): Promise<GeminiResult> {

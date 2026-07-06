@@ -95,11 +95,20 @@ function parseJsonSafe<T>(text: string, fallback: T): T {
 
 function parseEvaluationJson(text: string): EvaluationResult | null {
   const cleaned = text.replace(/^```(?:json)?\s*/m, "").replace(/\s*```\s*$/m, "").trim();
-  try {
-    return JSON.parse(cleaned) as EvaluationResult;
-  } catch {
-    return null;
+  const candidates = [cleaned];
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    candidates.push(cleaned.slice(start, end + 1));
   }
+  for (const candidate of candidates) {
+    try {
+      return JSON.parse(candidate) as EvaluationResult;
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
 }
 
 export class GeminiLLMProvider implements LLMProvider {
@@ -198,7 +207,7 @@ export class GeminiLLMProvider implements LLMProvider {
     const { scenario, history, stateHistory, finalState, hintsUsed } = opts;
     const evalHistory = history.slice(-24);
     const evalStateHistory = stateHistory.slice(-12);
-    const template = injectContext(loadPrompt("system-evaluator.md"), true);
+    const template = injectContext(loadPrompt("system-evaluator.md"), false);
 
     const scenarioSummary = {
       name: scenario.name,
@@ -259,12 +268,19 @@ export class GeminiLLMProvider implements LLMProvider {
       {
         system,
         user: `Оцени диалог менеджера.${hintsNote}`,
-        maxOutputTokens: 8192,
+        maxOutputTokens: 4096,
       },
       {
-        system: `${system}\n\nВажно: верни компактный JSON — strengths до 3 пунктов, mistakes до 5, turningPoints до 3, betterReplies до 2.`,
+        system: `${system}\n\nВажно: верни компактный JSON — strengths до 2 пунктов, mistakes до 3, turningPoints до 1, stateChanges до 2, betterReplies ровно 1, clientEmotions до 2. Без лишних полей.`,
         user: `Оцени диалог менеджера. Будь кратким.${hintsNote}`,
-        maxOutputTokens: 8192,
+        maxOutputTokens: 4096,
+      },
+      {
+        system: `Оцени переписку менеджера Retro Pressa (подарки по дате рождения). Верни ТОЛЬКО JSON:
+{"totalScore":0-100,"categoryScores":{"qualification":0-20,"recommendation":0-20,"productClarity":0-15,"visual":0-10,"pricing":0-15,"closing":0-10,"objectionHandling":0-10},"strengths":[],"mistakes":[],"missedQuestions":[],"clientEmotions":[],"turningPoints":[],"stateChanges":[],"betterReplies":[{"originalText":"","suggestion":"","reason":""}],"finalResult":"lost|thinking|interested|ready_to_order","exampleNextMessage":""}
+strengths/mistakes — только по реальным репликам менеджера.`,
+        user: `Сценарий: ${scenario.name}\n\n${formatHistory(evalHistory)}\n\nСостояние клиента: ${formatClientState(finalState)}${hintsNote}`,
+        maxOutputTokens: 2048,
       },
     ];
 
@@ -275,9 +291,9 @@ export class GeminiLLMProvider implements LLMProvider {
           system: cfg.system,
           user: cfg.user,
           json: true,
-          timeoutMs: 90_000,
+          timeoutMs: 60_000,
           maxOutputTokens: cfg.maxOutputTokens,
-          preferFallbackModel: true,
+          temperature: attempt === 2 ? 0.2 : 0.4,
         });
         const parsed = parseEvaluationJson(result.text);
         if (!parsed) {

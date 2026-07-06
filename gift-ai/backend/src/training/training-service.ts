@@ -5,7 +5,7 @@ import { applyStateRules, checkLost, checkPurchaseReady, getStateMoodLabel } fro
 import { getScenarioFromDb, listScenariosFromDb } from "./scenario-loader.js";
 import { redeemInvite } from "./invite-service.js";
 import { notifyTrainingSessionComplete } from "./training-notify.js";
-import { reconcileEvaluationWithHistory } from "./evaluation-reconcile.js";
+import { reconcileEvaluationWithHistory, buildRuleBasedEvaluation, isTechnicalFallbackEvaluation } from "./evaluation-reconcile.js";
 import type {
   TrainingScenario,
   ClientState,
@@ -391,7 +391,14 @@ export async function finishSession(sessionId: string): Promise<EvaluationResult
     finalState,
     hintsUsed,
   });
-  const evaluation = reconcileEvaluationWithHistory(rawEvaluation, history, {
+  const baseEvaluation = isTechnicalFallbackEvaluation(rawEvaluation)
+    ? buildRuleBasedEvaluation(history, {
+        hintsUsed,
+        manuallyFinished: wasManuallyFinished,
+        finalState,
+      })
+    : rawEvaluation;
+  const evaluation = reconcileEvaluationWithHistory(baseEvaluation, history, {
     manuallyFinished: wasManuallyFinished,
   });
 
