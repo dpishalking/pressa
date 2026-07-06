@@ -5,8 +5,8 @@ import { applyStateRules, checkLost, checkPurchaseReady, getStateMoodLabel } fro
 import { getScenarioFromDb, listScenariosFromDb } from "./scenario-loader.js";
 import { redeemInvite } from "./invite-service.js";
 import { notifyTrainingSessionComplete } from "./training-notify.js";
-import { reconcileEvaluationWithHistory, buildRuleBasedEvaluation, isTechnicalFallbackEvaluation } from "./evaluation-reconcile.js";
 import { buildFallbackClientReply } from "./client-reply-fallback.js";
+import { resolveSessionEvaluation } from "./session-evaluation.js";
 import type {
   TrainingScenario,
   ClientState,
@@ -385,21 +385,12 @@ export async function finishSession(sessionId: string): Promise<EvaluationResult
 
   const llm = getLLMProvider();
   const wasManuallyFinished = session.status === "active";
-  const rawEvaluation = await llm.evaluateSession({
+  const evaluation = await resolveSessionEvaluation(llm, {
     scenario,
     history,
     stateHistory,
     finalState,
     hintsUsed,
-  });
-  const baseEvaluation = isTechnicalFallbackEvaluation(rawEvaluation)
-    ? buildRuleBasedEvaluation(history, {
-        hintsUsed,
-        manuallyFinished: wasManuallyFinished,
-        finalState,
-      })
-    : rawEvaluation;
-  const evaluation = reconcileEvaluationWithHistory(baseEvaluation, history, {
     manuallyFinished: wasManuallyFinished,
   });
 

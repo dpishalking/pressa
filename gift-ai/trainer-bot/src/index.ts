@@ -92,6 +92,31 @@ async function restoreActiveSession(uid: string, internalUserId: string, force =
   }
 }
 
+async function replyActiveSessionPrompt(ctx: Context, uid: string): Promise<void> {
+  const session = getSession(uid);
+  if (!session.currentSessionId) return;
+
+  const keyboard = inSessionKeyboard(session.currentMode ?? "mode_a", session.hintMode ?? false);
+  try {
+    const detail = await trainerApi.getSession(session.currentSessionId);
+    const lastClient = [...(detail.messages ?? [])].reverse().find((m) => m.author === "client");
+    if (lastClient) {
+      await ctx.reply(
+        `Тренировка продолжается.\n\n👤 <b>Клиент:</b>\n${escapeHtml(lastClient.text)}\n\n💼 Напишите ответ или нажмите «Завершить».`,
+        { parse_mode: "HTML", reply_markup: keyboard },
+      );
+      return;
+    }
+  } catch (e) {
+    console.error("[replyActiveSessionPrompt]", e);
+  }
+
+  await ctx.reply(
+    "Тренировка уже идёт. Напишите следующее сообщение или нажмите «Завершить».",
+    { reply_markup: keyboard },
+  );
+}
+
 async function finishTraining(ctx: Context, uid: string): Promise<void> {
   let internalId: string;
   try {
@@ -179,10 +204,7 @@ async function startTemplateTraining(ctx: Context, uid: string, template: string
   await restoreActiveSession(uid, internalId);
   const active = getSession(uid);
   if (active.currentSessionId && active.screen === "in_session") {
-    await ctx.reply(
-      "Тренировка уже идёт. Напишите следующее сообщение или нажмите «Завершить».",
-      { reply_markup: inSessionKeyboard(active.currentMode ?? "mode_a", active.hintMode ?? false) },
-    );
+    await replyActiveSessionPrompt(ctx, uid);
     return;
   }
 
@@ -325,10 +347,7 @@ bot.command("train", async (ctx) => {
     await restoreActiveSession(uid, internalId);
     const restored = getSession(uid);
     if (restored.currentSessionId && restored.screen === "in_session") {
-      await ctx.reply(
-        "Тренировка уже идёт. Напишите следующее сообщение или нажмите «Завершить».",
-        { reply_markup: inSessionKeyboard(restored.currentMode ?? "mode_a", restored.hintMode ?? false) },
-      );
+      await replyActiveSessionPrompt(ctx, uid);
       return;
     }
     setSession(uid, { screen: "select_mode", currentSessionId: undefined, currentScenarioId: undefined });
@@ -382,10 +401,7 @@ bot.on("callback_query:data", async (ctx) => {
       await restoreActiveSession(uid, internalId);
       const restored = getSession(uid);
       if (restored.currentSessionId && restored.screen === "in_session") {
-        await ctx.reply(
-          "Тренировка уже идёт. Просто напишите следующее сообщение в чат или нажмите «Завершить диалог».",
-          { reply_markup: inSessionKeyboard(restored.currentMode ?? "mode_a", restored.hintMode ?? false) },
-        );
+        await replyActiveSessionPrompt(ctx, uid);
         return;
       }
 
