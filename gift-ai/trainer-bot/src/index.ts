@@ -1,9 +1,11 @@
-import { Bot, GrammyError, type Context } from "grammy";
+import { Bot, GrammyError, InlineKeyboard, type Context } from "grammy";
 import { getSession, setSession } from "./session.js";
 import {
   mainMenuKeyboard,
   templateScenarioKeyboard,
+  inSessionKeyboard,
   postSessionKeyboard,
+  SESSION_BUTTONS_HELP,
 } from "./keyboards.js";
 import { trainerApi } from "./api.js";
 import {
@@ -154,13 +156,14 @@ async function replyActiveSessionPrompt(ctx: Context, uid: string): Promise<void
   const session = getSession(uid);
   if (!session.currentSessionId) return;
 
+  const keyboard = inSessionKeyboard(session.currentMode ?? "mode_a", session.hintMode ?? false);
   try {
     const detail = await trainerApi.getSession(session.currentSessionId);
     const lastClient = [...(detail.messages ?? [])].reverse().find((m) => m.author === "client");
     if (lastClient) {
       await ctx.reply(
-        `Тренировка продолжается.\n\n👤 <b>Клиент:</b>\n${escapeHtml(lastClient.text)}\n\n💼 Напишите ответ. Завершить: /finish`,
-        { parse_mode: "HTML" },
+        `Тренировка продолжается.\n\n👤 <b>Клиент:</b>\n${escapeHtml(lastClient.text)}\n\n💼 Напишите ответ или нажмите «Завершить».`,
+        { parse_mode: "HTML", reply_markup: keyboard },
       );
       return;
     }
@@ -169,7 +172,8 @@ async function replyActiveSessionPrompt(ctx: Context, uid: string): Promise<void
   }
 
   await ctx.reply(
-    "Тренировка уже идёт. Напишите сообщение или завершите: /finish",
+    "Тренировка уже идёт. Напишите следующее сообщение или нажмите «Завершить».",
+    { reply_markup: keyboard },
   );
 }
 
@@ -300,7 +304,7 @@ async function startTemplateTraining(ctx: Context, uid: string, template: string
   if (scenario.description) {
     introText += `${escapeHtml(scenario.description)}\n\n`;
   }
-  introText += `💼 Вы — менеджер. AI — клиент.\n\nПишите как в обычном чате. Завершить: /finish\n\n`;
+  introText += `💼 Вы — менеджер. AI — клиент.\n\n`;
   introText += `<b>═══ Начало диалога ═══</b>`;
 
   await ctx.reply(introText, { parse_mode: "HTML" });
@@ -346,7 +350,7 @@ async function showSessionDialogStart(
   if (mode === "mode_a") {
     await ctx.reply(
       `👤 <b>Клиент:</b>\n${escapeHtml(result.initialMessage)}`,
-      { parse_mode: "HTML" },
+      { parse_mode: "HTML", reply_markup: inSessionKeyboard("mode_a", hintMode) },
     );
     return;
   }
@@ -358,8 +362,8 @@ async function showSessionDialogStart(
 
   if (result.initialManagerReply) {
     await ctx.reply(
-      `💼 <b>Менеджер (AI):</b>\n${escapeHtml(result.initialManagerReply)}\n\n✍️ Продолжайте диалог <b>от лица клиента</b>. Завершить: /finish`,
-      { parse_mode: "HTML" },
+      `💼 <b>Менеджер (AI):</b>\n${escapeHtml(result.initialManagerReply)}\n\n✍️ Продолжайте диалог <b>от лица клиента</b>.`,
+      { parse_mode: "HTML", reply_markup: inSessionKeyboard("mode_b") },
     );
   }
 }
@@ -481,19 +485,71 @@ bot.on("callback_query:data", async (ctx) => {
       return;
     }
 
-    // In-session actions (legacy — кнопки убраны, оставлено для старых сообщений)
+    // In-session actions (simulated manager actions)
     if (data.startsWith("session:action:")) {
-      await ctx.answerCallbackQuery({ text: "Пишите текстом. Завершить: /finish" });
+      const action = data.slice("session:action:".length);
+      const session = getSession(uid);
+      if (!session.currentSessionId) return;
+
+      if (session.currentMode === "mode_b") {
+        await ctx.answerCallbackQuery({ text: "Доступно только в режиме A" });
+        return;
+      }
+
+      const actionMessages: Record<string, string> = {
+        photo: "[Менеджер отправил фотографии продукта]",
+        pricing: "[Менеджер отправил полный расчёт: товар + персонализация + доставка + итог + срок]",
+        show_product: "[Менеджер показал описание товара с примерами]",
+      };
+
+      const actionText = actionMessages[action] ?? `[${action}]`;
+
+      try {
+        const result = await trainerApi.sendMessage(session.currentSessionId, actionText);
+        if (!("clientReply" in result)) {
+          await ctx.reply("Это действие доступно только в режиме A.");
+          return;
+        }
+
+        await ctx.reply(
+          `💼 <b>Вы:</b>\n<i>${escapeHtml(actionText)}</i>`,
+          { parse_mode: "HTML" },
+        );
+
+        await ctx.reply(
+          `👤 <b>Клиент</b> ${moodEmoji(result.moodLabel)}:\n${escapeHtml(result.clientReply)}`,
+          { parse_mode: "HTML", reply_markup: inSessionKeyboard("mode_a", session.hintMode ?? false) },
+        );
+
+        if (result.isPurchaseReady) {
+          await ctx.reply("🎉 <b>Клиент готов оформить заказ!</b>\n\nОтличная работа! Нажмите «Завершить» чтобы получить разбор.", {
+            parse_mode: "HTML",
+            reply_markup: new InlineKeyboard().text("🏁 Завершить и получить разбор", "session:finish"),
+          });
+        } else if (result.isLost) {
+          await ctx.reply("❌ <b>Клиент ушёл.</b>\n\nНажмите «Завершить» чтобы посмотреть, что пошло не так.", {
+            parse_mode: "HTML",
+            reply_markup: new InlineKeyboard().text("🏁 Завершить и получить разбор", "session:finish"),
+          });
+        }
+      } catch (e) {
+        console.error("[session action]", e);
+        await ctx.reply("Не удалось обработать действие.");
+      }
       return;
     }
 
     if (data === "session:hint") {
-      await ctx.answerCallbackQuery({ text: "Подсказка отключена" });
+      await ctx.answerCallbackQuery({ text: "Подсказка придёт вместе со следующим ответом клиента" });
       return;
     }
 
     if (data === "session:help") {
-      await ctx.reply("Пишите клиенту текстом, как в обычном чате. Завершить: /finish");
+      const session = getSession(uid);
+      await ctx.reply(SESSION_BUTTONS_HELP, {
+        parse_mode: "HTML",
+        reply_markup: inSessionKeyboard(session.currentMode ?? "mode_a", session.hintMode ?? false),
+      });
       return;
     }
 
@@ -580,7 +636,7 @@ bot.on("message:text", async (ctx) => {
 
         await ctx.reply(
           `💼 <b>Менеджер (AI):</b>\n${escapeHtml(result.managerReply)}`,
-          { parse_mode: "HTML" },
+          { parse_mode: "HTML", reply_markup: inSessionKeyboard("mode_b") },
         );
         return;
       }
@@ -591,7 +647,10 @@ bot.on("message:text", async (ctx) => {
 
       await ctx.reply(
         `👤 <b>Клиент</b> ${moodEmoji(result.moodLabel)}:\n${escapeHtml(result.clientReply)}`,
-        { parse_mode: "HTML" },
+        {
+          parse_mode: "HTML",
+          reply_markup: inSessionKeyboard("mode_a", session.hintMode ?? false),
+        },
       );
 
       // Show hint if provided
@@ -610,12 +669,14 @@ bot.on("message:text", async (ctx) => {
       }
 
       if (result.isPurchaseReady) {
-        await ctx.reply("🎉 <b>Клиент готов оформить заказ!</b>\n\nОтличная работа! Разбор: /finish", {
+        await ctx.reply("🎉 <b>Клиент готов оформить заказ!</b>\n\nОтличная работа! Нажмите «Завершить» для разбора.", {
           parse_mode: "HTML",
+          reply_markup: new InlineKeyboard().text("🏁 Завершить и получить разбор", "session:finish"),
         });
       } else if (result.isLost) {
-        await ctx.reply("❌ <b>Клиент ушёл.</b>\n\nРазобрать диалог: /finish", {
+        await ctx.reply("❌ <b>Клиент ушёл.</b>\n\nНажмите «Завершить» чтобы разобрать диалог.", {
           parse_mode: "HTML",
+          reply_markup: new InlineKeyboard().text("🏁 Завершить и получить разбор", "session:finish"),
         });
       }
     } catch (e) {

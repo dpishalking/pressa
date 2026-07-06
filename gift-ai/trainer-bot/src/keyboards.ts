@@ -60,6 +60,30 @@ export function templateScenarioKeyboard(): InlineKeyboard {
     .text("🔙 Назад", "menu:main");
 }
 
+export const SESSION_BUTTONS_HELP =
+  "<b>Кнопки под сообщением</b>\n\n" +
+  "📸 <b>Фото</b> — вы отправили клиенту фото или пример продукта.\n\n" +
+  "💰 <b>Расчёт</b> — полная стоимость: товар + доставка + итог + срок.\n\n" +
+  "🏷️ <b>Товар</b> — описание формата и что получит клиент.\n\n" +
+  "🏁 <b>Завершить</b> — закончить ролевку и получить оценку.\n\n" +
+  "Можно и просто писать текстом — как в реальном чате.";
+
+export function inSessionKeyboard(mode: "mode_a" | "mode_b", hintMode = false): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (mode === "mode_b") {
+    return kb.text("🏁 Завершить диалог", "session:finish");
+  }
+  if (hintMode) {
+    kb.text("💡 Подсказка", "session:hint").row();
+  }
+  return kb
+    .text("📸 Фото", "session:action:photo")
+    .text("💰 Расчёт", "session:action:pricing").row()
+    .text("🏷️ Товар", "session:action:show_product").row()
+    .text("❓ Что значат кнопки", "session:help").row()
+    .text("🏁 Завершить", "session:finish");
+}
+
 export function postSessionKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("🔁 Повторить сценарий", "session:repeat").row()
