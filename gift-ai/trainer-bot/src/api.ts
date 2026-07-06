@@ -138,10 +138,10 @@ export const trainerApi = {
   getScenario: (id: string) =>
     apiGet<TrainingScenarioSafe>(`/scenarios/${id}`),
 
-  generateScenario: (template: string) =>
+  generateScenario: (template: string, excludeScenarioId?: string) =>
     apiPost<{ scenarioId: string; scenario: TrainingScenarioSafe; generated: boolean }>(
       "/scenarios/generate",
-      { template },
+      { template, ...(excludeScenarioId ? { excludeScenarioId } : {}) },
       60_000,
     ),
 

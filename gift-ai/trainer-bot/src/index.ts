@@ -5,6 +5,7 @@ import {
   templateScenarioKeyboard,
   inSessionKeyboard,
   postSessionKeyboard,
+  SESSION_BUTTONS_HELP,
 } from "./keyboards.js";
 import { trainerApi } from "./api.js";
 import {
@@ -161,15 +162,11 @@ async function finishTraining(ctx: Context, uid: string): Promise<void> {
 
 async function showTemplateScenarioMenu(ctx: Context): Promise<void> {
   await ctx.reply(
-    `<b>Выберите сценарий</b>\n\n` +
-      `Вы — менеджер, AI — клиент. Нажмите кнопку подходящей ситуации:\n\n` +
-      `📅 <b>Клиент указал дату</b>\n` +
-      `Клиент уже знает дату рождения, но не понимает формат подарка. ` +
-      `Ваша задача — проверить архив и предложить подходящий вариант.\n\n` +
-      `🎁 <b>Клиент ищет подарок</b>\n` +
-      `Клиент пришёл с общим запросом «нужен подарок». ` +
-      `Ваша задача — выяснить потребность и предложить персональный вариант.\n\n` +
-      `🔙 <b>Назад</b> — вернуться в главное меню.`,
+    `<b>Выберите тип ситуации</b>\n\n` +
+      `Каждый раз подбирается <b>новая тема</b> из базы сценариев (папа, мама, супруг, юбилей, возражения и др.).\n\n` +
+      `🎲 <b>Случайная тема</b> — любой сценарий из 30+ вариантов.\n\n` +
+      `📅 <b>Клиент указал дату</b> — знает дату рождения, но не понимает формат (газета, репродукция, журнал).\n\n` +
+      `🎁 <b>Клиент ищет подарок</b> — общий запрос «нужен подарок», нужна квалификация и рекомендация.`,
     {
       parse_mode: "HTML",
       reply_markup: templateScenarioKeyboard(),
@@ -189,10 +186,11 @@ async function startTemplateTraining(ctx: Context, uid: string, template: string
     return;
   }
 
-  await ctx.reply("⏳ Загружаю сценарий…");
+  await ctx.reply("⏳ Подбираю новый сценарий…");
+  const previousScenarioId = getSession(uid).lastScenarioId;
   let generated;
   try {
-    generated = await trainerApi.generateScenario(template);
+    generated = await trainerApi.generateScenario(template, previousScenarioId);
   } catch (e) {
     console.error("[generateScenario]", e);
     const msg = e instanceof Error ? e.message : String(e);
@@ -212,16 +210,24 @@ async function startTemplateTraining(ctx: Context, uid: string, template: string
     screen: "in_session",
     currentSessionId: result.sessionId,
     currentScenarioId: generated.scenarioId,
+    lastScenarioId: generated.scenarioId,
     currentMode: mode,
   });
 
   const scenario = result.scenario;
-  let introText = `<b>🎭 Сценарий: ${escapeHtml(scenario.name)}</b>\n`;
+  let introText = `<b>🎭 ${escapeHtml(scenario.name)}</b>\n`;
   introText += `${difficultyLabel(scenario.difficulty)} · ${skillLabel(scenario.trainingSkill)}\n\n`;
-  introText += `💼 Вы — менеджер. AI — клиент.\n\nКлиент НЕ раскрывает сразу всю информацию. Квалифицируйте через диалог.\n\nДля завершения: /finish или кнопка «Завершить».\n\n`;
+  if (scenario.description) {
+    introText += `${escapeHtml(scenario.description)}\n\n`;
+  }
+  introText += `💼 Вы — менеджер. AI — клиент.\n\n`;
   introText += `<b>═══ Начало диалога ═══</b>`;
 
   await ctx.reply(introText, { parse_mode: "HTML" });
+  await ctx.reply(SESSION_BUTTONS_HELP, {
+    parse_mode: "HTML",
+    reply_markup: inSessionKeyboard(mode, false),
+  });
   await showSessionDialogStart(ctx, mode, result, false);
 }
 
@@ -458,6 +464,15 @@ bot.on("callback_query:data", async (ctx) => {
     if (data === "session:hint") {
       // Hint is sent along with message processing if hintMode is on
       await ctx.answerCallbackQuery({ text: "Подсказка придёт вместе со следующим ответом клиента" });
+      return;
+    }
+
+    if (data === "session:help") {
+      const session = getSession(uid);
+      await ctx.reply(SESSION_BUTTONS_HELP, {
+        parse_mode: "HTML",
+        reply_markup: inSessionKeyboard(session.currentMode ?? "mode_a", session.hintMode ?? false),
+      });
       return;
     }
 

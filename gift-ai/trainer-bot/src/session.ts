@@ -15,6 +15,7 @@ export interface TrainerSession {
   screen: TrainerScreen;
   currentSessionId?: string;
   currentScenarioId?: string;
+  lastScenarioId?: string;
   currentMode?: "mode_a" | "mode_b";
   pendingDifficulty?: string;
   pendingSkill?: string;

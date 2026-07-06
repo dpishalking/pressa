@@ -54,10 +54,19 @@ export function scenarioListKeyboard(
 
 export function templateScenarioKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
+    .text("🎲 Случайная тема", "template:random").row()
     .text("📅 Клиент указал дату", "template:knows_date").row()
     .text("🎁 Клиент ищет подарок", "template:gift_search").row()
     .text("🔙 Назад", "menu:main");
 }
+
+export const SESSION_BUTTONS_HELP =
+  "<b>Кнопки под сообщением</b>\n\n" +
+  "📸 <b>Фото</b> — вы отправили клиенту фото или пример продукта (газета, журнал, упаковка).\n\n" +
+  "💰 <b>Расчёт</b> — полная стоимость: товар + персонализация + доставка + итог + срок изготовления.\n\n" +
+  "🏷️ <b>Товар</b> — описание формата и что получит клиент (оригинал, репродукция, персонализация).\n\n" +
+  "🏁 <b>Завершить</b> — закончить ролевку и получить оценку от ИИ.\n\n" +
+  "Можно и просто писать текстом — как в реальном чате с клиентом.";
 
 export function inSessionKeyboard(mode: "mode_a" | "mode_b", hintMode = false): InlineKeyboard {
   const kb = new InlineKeyboard();
@@ -68,10 +77,11 @@ export function inSessionKeyboard(mode: "mode_a" | "mode_b", hintMode = false): 
     kb.text("💡 Подсказка", "session:hint").row();
   }
   return kb
-    .text("📸 [Отправить фото]", "session:action:photo")
-    .text("💰 [Расчёт]", "session:action:pricing").row()
-    .text("🏷️ [Показать товар]", "session:action:show_product").row()
-    .text("🏁 Завершить диалог", "session:finish");
+    .text("📸 Фото", "session:action:photo")
+    .text("💰 Расчёт", "session:action:pricing").row()
+    .text("🏷️ Товар", "session:action:show_product").row()
+    .text("❓ Что значат кнопки", "session:help").row()
+    .text("🏁 Завершить", "session:finish");
 }
 
 export function postSessionKeyboard(): InlineKeyboard {

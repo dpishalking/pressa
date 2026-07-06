@@ -22,6 +22,7 @@ import {
   listManagers,
   listManagerSessionsByExternalId,
 } from "../training/manager-service.js";
+import { getManagerTrainingSessions } from "../training/manager-sessions.js";
 import { config } from "../config.js";
 import { getDb } from "../db/client.js";
 import { logger } from "../logger.js";
@@ -135,6 +136,20 @@ trainerRouter.get("/managers/:externalId/practice", (c) => {
   return c.json(links);
 });
 
+trainerRouter.get("/managers/:externalId/sessions", async (c) => {
+  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+
+  try {
+    const externalId = c.req.param("externalId");
+    const sessions = getManagerTrainingSessions(externalId);
+    return c.json({ sessions });
+  } catch (e) {
+    logger.error("get manager sessions error", { error: String(e) });
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
+
 trainerRouter.post("/managers", async (c) => {
   if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
 
@@ -236,9 +251,17 @@ trainerRouter.get("/scenarios", async (c) => {
 
 trainerRouter.post("/scenarios/generate", async (c) => {
   try {
-    const body = await c.req.json() as { template?: string; type?: string; scenarioType?: string; kind?: string };
+    const body = await c.req.json() as {
+      template?: string;
+      type?: string;
+      scenarioType?: string;
+      kind?: string;
+      excludeScenarioId?: string;
+    };
     const template = body.template ?? body.type ?? body.scenarioType ?? body.kind ?? "gift_search";
-    const result = await generateScenarioForTemplate(template);
+    const result = await generateScenarioForTemplate(template, {
+      excludeScenarioId: body.excludeScenarioId,
+    });
     const { hiddenFacts: _, ...safeScenario } = result.scenario;
     return c.json({
       scenarioId: result.scenarioId,
