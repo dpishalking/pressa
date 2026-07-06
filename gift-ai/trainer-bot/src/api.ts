@@ -77,6 +77,7 @@ export type EvaluationResult = {
   missedQuestions: string[];
   clientEmotions: string[];
   turningPoints: Array<{ messageIndex: number; type: string; description: string }>;
+  stateChanges: Array<{ turn: number; changes: Array<{ field: string; delta: number; reason: string }> }>;
   betterReplies: Array<{ originalText: string; suggestion: string; reason: string }>;
   finalResult: string;
   clientFeeling?: string;
