@@ -6,6 +6,7 @@ import { getScenarioFromDb, listScenariosFromDb } from "./scenario-loader.js";
 import { redeemInvite } from "./invite-service.js";
 import { notifyTrainingSessionComplete } from "./training-notify.js";
 import { reconcileEvaluationWithHistory, buildRuleBasedEvaluation, isTechnicalFallbackEvaluation } from "./evaluation-reconcile.js";
+import { buildFallbackClientReply } from "./client-reply-fallback.js";
 import type {
   TrainingScenario,
   ClientState,
@@ -195,10 +196,6 @@ export interface ProcessMessageResult {
   hint?: { currentStage: string; knownFacts: string[]; unknownFacts: string[]; suggestion: string; clientMoodLabel: string };
 }
 
-function buildFallbackClientReply(): string {
-  return "Понял вас. Подскажите, пожалуйста: для кого подарок и к какой дате нужно успеть? Хочу предложить подходящий формат.";
-}
-
 export async function processEmployeeMessage(
   sessionId: string,
   employeeText: string,
@@ -248,7 +245,11 @@ export async function processEmployeeMessage(
     });
   } catch (e) {
     logger.warn("generateClientReply failed, using fallback reply", { sessionId, error: String(e) });
-    clientReply = buildFallbackClientReply();
+    clientReply = buildFallbackClientReply({ employeeText, history, clientState: newState, scenario });
+  }
+
+  if (!clientReply.trim()) {
+    clientReply = buildFallbackClientReply({ employeeText, history, clientState: newState, scenario });
   }
 
   // Save client message (with state before/after)

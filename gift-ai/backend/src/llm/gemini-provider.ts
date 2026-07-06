@@ -141,14 +141,33 @@ export class GeminiLLMProvider implements LLMProvider {
 
     const user = formatHistory(history);
 
-    for (let attempt = 0; attempt < 3; attempt++) {
+    const compactSystem = `Ты клиент Retro Pressa (подарки по дате рождения). Отвечай ТОЛЬКО от лица клиента, 1–3 предложения, без JSON.
+Профиль: ${JSON.stringify(scenario.buyerProfile)}
+Повод: ${scenario.occasion}
+Не подсказывай менеджеру вопросы. Если менеджер ответил не по теме — удивись и верни разговор к подарку.
+irritation: ${Math.round(clientState.irritation)}/100`;
+
+    const attempts: Array<{ system: string; timeoutMs: number }> = [
+      { system, timeoutMs: 45_000 },
+      { system, timeoutMs: 60_000 },
+      { system: compactSystem, timeoutMs: 45_000 },
+    ];
+
+    for (let attempt = 0; attempt < attempts.length; attempt++) {
       try {
-        const result = await callGemini({ system, user, json: false });
+        const cfg = attempts[attempt]!;
+        const result = await callGemini({
+          system: cfg.system,
+          user,
+          json: false,
+          timeoutMs: cfg.timeoutMs,
+          temperature: 0.8,
+        });
         const text = result.text.trim();
         if (text) return text;
       } catch (e) {
         logger.warn("generateClientReply attempt failed", { attempt, error: String(e) });
-        if (attempt === 2) throw e;
+        if (attempt === attempts.length - 1) throw e;
       }
     }
 
