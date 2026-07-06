@@ -68,4 +68,28 @@ describe("buildFallbackClientReply", () => {
     expect(reply).toMatch(/дедуш/i);
     expect(reply).not.toMatch(/хочу предложить/i);
   });
+
+  it("responds about mom and photo request when manager is off-topic", () => {
+    const momMessage =
+      "Добрый день! Хочу заказать газету для мамы. Она родилась в 1963-м. А покажите, как это выглядит?";
+    const reply = buildFallbackClientReply({
+      employeeText: "персики любит?",
+      history: [{ author: "client", text: momMessage }],
+      clientState: DEFAULT_CLIENT_STATE,
+      scenario: { ...scenario, initialMessage: momMessage },
+    });
+
+    expect(reply).toMatch(/мам/i);
+    expect(reply).toMatch(/газет|выгляд|покаж/i);
+    expect(reply).not.toMatch(/хочу предложить/i);
+    expect(reply).not.toMatch(/для кого подарок/i);
+  });
+
+  it("detects manager voice via who+when heuristic", () => {
+    expect(
+      looksLikeManagerReply(
+        "Подскажите, для кого подарок и к какой дате нужно успеть? Хочу подложить вариант.",
+      ),
+    ).toBe(true);
+  });
 });

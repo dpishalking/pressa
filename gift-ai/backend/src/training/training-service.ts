@@ -5,7 +5,8 @@ import { applyStateRules, checkLost, checkPurchaseReady, getStateMoodLabel } fro
 import { getScenarioFromDb, listScenariosFromDb } from "./scenario-loader.js";
 import { redeemInvite } from "./invite-service.js";
 import { notifyTrainingSessionComplete } from "./training-notify.js";
-import { reconcileEvaluationWithHistory } from "./evaluation-reconcile.js";
+import { buildFallbackClientReply, ensureClientVoiceReply } from "./client-reply-fallback.js";
+import { resolveSessionEvaluation } from "./session-evaluation.js";
 import type {
   TrainingScenario,
   ClientState,
@@ -210,10 +211,6 @@ export interface ProcessMessageResult {
   hint?: { currentStage: string; knownFacts: string[]; unknownFacts: string[]; suggestion: string; clientMoodLabel: string };
 }
 
-function buildFallbackClientReply(): string {
-  return "Понял вас. Подскажите, пожалуйста: для кого подарок и к какой дате нужно успеть? Хочу предложить подходящий формат.";
-}
-
 export async function processEmployeeMessage(
   sessionId: string,
   employeeText: string,
@@ -252,18 +249,25 @@ export async function processEmployeeMessage(
   const newRevealedFacts = updateRevealedFacts(sessionId, classified, scenario, revealedFacts);
 
   // Generate client reply
+  const replyContext = {
+    employeeText,
+    history: [...history, { author: "employee", text: employeeText }],
+    clientState: newState,
+    scenario,
+  };
   let clientReply: string;
   try {
-    clientReply = await llm.generateClientReply({
+    const rawReply = await llm.generateClientReply({
       scenario,
-      history: [...history, { author: "employee", text: employeeText }],
+      history: replyContext.history,
       clientState: newState,
       lastManagerAction: classified,
       revealedFacts: newRevealedFacts,
     });
+    clientReply = ensureClientVoiceReply(rawReply, replyContext);
   } catch (e) {
     logger.warn("generateClientReply failed, using fallback reply", { sessionId, error: String(e) });
-    clientReply = buildFallbackClientReply();
+    clientReply = buildFallbackClientReply(replyContext);
   }
 
   // Save client message (with state before/after)
@@ -367,12 +371,39 @@ export async function processBModeMessage(
   };
 }
 
+function loadStoredEvaluation(sessionId: string): EvaluationResult | null {
+  const row = getDb()
+    .prepare("SELECT * FROM training_evaluations WHERE session_id = ?")
+    .get(sessionId) as Record<string, unknown> | undefined;
+  if (!row) return null;
+
+  return {
+    totalScore: Number(row.total_score),
+    categoryScores: JSON.parse(String(row.category_scores_json)),
+    strengths: JSON.parse(String(row.strengths_json)),
+    mistakes: JSON.parse(String(row.mistakes_json)),
+    missedQuestions: JSON.parse(String(row.missed_questions_json)),
+    clientEmotions: JSON.parse(String(row.client_emotions_json)),
+    turningPoints: JSON.parse(String(row.turning_points_json)),
+    stateChanges: JSON.parse(String(row.state_changes_json)),
+    betterReplies: JSON.parse(String(row.better_replies_json)),
+    finalResult: String(row.final_result) as EvaluationResult["finalResult"],
+    clientFeeling: row.client_feeling ? String(row.client_feeling) : undefined,
+    exampleNextMessage: row.example_next_message ? String(row.example_next_message) : undefined,
+  };
+}
+
 export async function finishSession(sessionId: string): Promise<EvaluationResult> {
   const db = getDb();
 
   const session = db.prepare("SELECT * FROM training_sessions WHERE id = ?")
     .get(sessionId) as Record<string, unknown> | undefined;
   if (!session) throw new Error("Session not found");
+
+  const existingEval = loadStoredEvaluation(sessionId);
+  if (existingEval) return existingEval;
+
+  const wasManuallyFinished = session.status === "active";
 
   // Mark complete if still active
   if (session.status === "active") {
@@ -398,15 +429,12 @@ export async function finishSession(sessionId: string): Promise<EvaluationResult
     }));
 
   const llm = getLLMProvider();
-  const wasManuallyFinished = session.status === "active";
-  const rawEvaluation = await llm.evaluateSession({
+  const evaluation = await resolveSessionEvaluation(llm, {
     scenario,
     history,
     stateHistory,
     finalState,
     hintsUsed,
-  });
-  const evaluation = reconcileEvaluationWithHistory(rawEvaluation, history, {
     manuallyFinished: wasManuallyFinished,
   });
 

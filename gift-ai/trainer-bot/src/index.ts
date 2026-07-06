@@ -140,8 +140,13 @@ async function finishTraining(ctx: Context, uid: string): Promise<void> {
       );
       return;
     }
-    await ctx.reply("Не удалось завершить тренировку. Попробуйте ещё раз.");
-    return;
+    try {
+      const cached = await trainerApi.getEvaluation(sessionId);
+      evaluation = cached.evaluation;
+    } catch {
+      await ctx.reply("Не удалось завершить тренировку. Попробуйте ещё раз.");
+      return;
+    }
   }
 
   setSession(uid, {

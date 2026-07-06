@@ -23,6 +23,7 @@ import type {
   TrainingScenario,
   ClientState,
 } from "../training/types.js";
+import { ensureClientVoiceReply } from "../training/client-reply-fallback.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROMPTS_DIR = path.join(__dirname, "prompts");
@@ -164,7 +165,15 @@ irritation: ${Math.round(clientState.irritation)}/100`;
           temperature: 0.8,
         });
         const text = result.text.trim();
-        if (text) return text;
+        if (text) {
+          const lastEmployee = [...history].reverse().find((m) => m.author === "employee");
+          return ensureClientVoiceReply(text, {
+            employeeText: lastEmployee?.text ?? "",
+            history,
+            clientState,
+            scenario,
+          });
+        }
       } catch (e) {
         logger.warn("generateClientReply attempt failed", { attempt, error: String(e) });
         if (attempt === attempts.length - 1) throw e;
