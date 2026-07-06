@@ -8,7 +8,6 @@ import {
 import { trainerApi } from "./api.js";
 import {
   formatEvaluation,
-  formatEvaluationTip,
   difficultyLabel,
   skillLabel,
   moodEmoji,
@@ -39,25 +38,36 @@ function username(ctx: { from?: { username?: string } }): string {
   return ctx.from?.username ?? "";
 }
 
-function parseStartPayload(text: string | undefined): string | null {
+function parseStartPayload(text: string | undefined): { inviteToken?: string; lmsExternalId?: string } | null {
   if (!text) return null;
   const payload = text.split(/\s+/)[1]?.trim();
   if (!payload) return null;
-  if (payload.startsWith("inv_")) return payload;
-  if (payload.startsWith("inv-")) return payload.replace(/^inv-/, "inv_");
+  if (payload.startsWith("link_")) {
+    return { lmsExternalId: decodeURIComponent(payload.slice(5)) };
+  }
+  if (payload.startsWith("inv_")) return { inviteToken: payload };
+  if (payload.startsWith("inv-")) return { inviteToken: payload.replace(/^inv-/, "inv_") };
   return null;
 }
 
 async function ensureUser(
   ctx: { from?: { id?: number; first_name?: string; last_name?: string; username?: string } },
-  inviteToken?: string,
+  startPayload?: { inviteToken?: string; lmsExternalId?: string } | null,
 ): Promise<{ userId: string; user?: { full_name: string; team_name: string | null; service_tag: string | null } }> {
   const uid = userId(ctx);
   const session = getSession(uid);
-  if (session.userId && !inviteToken) return { userId: session.userId };
+  const inviteToken = startPayload?.inviteToken;
+  const lmsExternalId = startPayload?.lmsExternalId;
+  if (session.userId && !inviteToken && !lmsExternalId) return { userId: session.userId };
 
   try {
-    const result = await trainerApi.registerUser(Number(uid), fullName(ctx), username(ctx), inviteToken);
+    const result = await trainerApi.registerUser(
+      Number(uid),
+      fullName(ctx),
+      username(ctx),
+      inviteToken,
+      lmsExternalId,
+    );
     setSession(uid, { userId: result.userId });
     return { userId: result.userId, user: result.user };
   } catch (e) {
@@ -214,25 +224,22 @@ async function finishTraining(ctx: Context, uid: string): Promise<void> {
   });
 
   const evalText = formatEvaluation(evaluation);
-  const tipText = formatEvaluationTip(evaluation);
-  const replyMarkup = postSessionKeyboard();
-
-  async function sendEval(text: string, withKeyboard: boolean): Promise<void> {
+  try {
+    await ctx.reply(evalText, {
+      parse_mode: "HTML",
+      reply_markup: postSessionKeyboard(),
+    });
+  } catch (e) {
+    console.error("[finish session reply]", e);
+    const plain = evalText.replace(/<[^>]+>/g, "");
     try {
-      await ctx.reply(text, {
-        parse_mode: "HTML",
-        reply_markup: withKeyboard ? replyMarkup : undefined,
-      });
-    } catch (e) {
-      console.error("[finish session reply]", e);
-      const plain = text.replace(/<[^>]+>/g, "");
-      await ctx.reply(plain, { reply_markup: withKeyboard ? replyMarkup : undefined });
+      await ctx.reply(plain, { reply_markup: postSessionKeyboard() });
+    } catch {
+      await ctx.reply(
+        `Результат: ${evaluation.totalScore ?? "?"}/100`,
+        { reply_markup: postSessionKeyboard() },
+      );
     }
-  }
-
-  await sendEval(evalText, !tipText);
-  if (tipText) {
-    await sendEval(tipText, true);
   }
 }
 
@@ -361,12 +368,16 @@ async function showSessionDialogStart(
 
 bot.command("start", async (ctx) => {
   const uid = userId(ctx);
-  const inviteToken = parseStartPayload(ctx.message?.text) ?? undefined;
+  const startPayload = parseStartPayload(ctx.message?.text) ?? undefined;
 
   try {
-    const { userId: internalUserId, user } = await ensureUser(ctx, inviteToken);
+    const { userId: internalUserId, user } = await ensureUser(ctx, startPayload);
 
-    if (inviteToken && user) {
+    if (startPayload?.lmsExternalId && user) {
+      await ctx.reply(
+        "✅ Аккаунт привязан к кабинету Retro Pressa. Результаты ролевок будут видны вашему руководителю.",
+      );
+    } else if (startPayload?.inviteToken && user) {
       const serviceLabel = user.service_tag === "yourstorymagazine" ? "YourStory Magazine" : "Retro Pressa";
       const lines = [
         `👋 Привет, <b>${escapeHtml(user.full_name)}</b>!`,
@@ -585,7 +596,17 @@ bot.on("message:text", async (ctx) => {
 
       // Show hint if provided
       if (result.hint) {
-        await ctx.reply(`💡 ${escapeHtml(result.hint.suggestion)}`, { parse_mode: "HTML" });
+        const h = result.hint;
+        let hintText = `💡 <b>Подсказка</b>\n`;
+        hintText += `Этап: <i>${escapeHtml(h.currentStage)}</i>\n`;
+        if (h.unknownFacts.length > 0) {
+          hintText += `\nЕщё не выяснено:\n`;
+          for (const f of h.unknownFacts.slice(0, 3)) {
+            hintText += `• <i>${escapeHtml(f)}</i>\n`;
+          }
+        }
+        hintText += `\n➡️ <b>${escapeHtml(h.suggestion)}</b>`;
+        await ctx.reply(hintText, { parse_mode: "HTML" });
       }
 
       if (result.isPurchaseReady) {

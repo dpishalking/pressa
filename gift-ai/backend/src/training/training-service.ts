@@ -31,14 +31,15 @@ export function getOrCreateUser(
   fullName: string,
   username: string,
   inviteToken?: string,
+  lmsExternalIdOverride?: string,
 ): string {
   const db = getDb();
   let teamId: string | null = null;
   let serviceTag: string | null = null;
   let resolvedName = fullName;
-  let lmsExternalId: string | null = null;
+  let lmsExternalId = lmsExternalIdOverride?.trim() || null;
 
-  if (inviteToken) {
+  if (!lmsExternalId && inviteToken) {
     const managerRow = db.prepare("SELECT external_id FROM training_managers WHERE invite_token = ?")
       .get(inviteToken) as { external_id: string } | undefined;
     if (managerRow) lmsExternalId = String(managerRow.external_id);

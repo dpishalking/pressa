@@ -170,19 +170,6 @@ trainerRouter.get("/managers", async (c) => {
   return c.json({ managers });
 });
 
-trainerRouter.get("/managers/:externalId/sessions", async (c) => {
-  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
-
-  try {
-    const externalId = c.req.param("externalId");
-    const sessions = listManagerSessionsByExternalId(externalId);
-    return c.json({ sessions });
-  } catch (e) {
-    logger.error("list manager sessions error", { error: String(e) });
-    return c.json({ error: String(e) }, 500);
-  }
-});
-
 function requireAdmin(c: { req: { header: (name: string) => string | undefined } }): boolean {
   const key = c.req.header("x-admin-key") ?? c.req.header("authorization")?.replace(/^Bearer\s+/i, "");
   return Boolean(key && key === config.ADMIN_API_KEY);
@@ -197,11 +184,18 @@ trainerRouter.post("/users/register", async (c) => {
       fullName: string;
       username?: string;
       inviteToken?: string;
+      lmsExternalId?: string;
     };
-    const { telegramId, fullName, username = "", inviteToken } = body;
+    const { telegramId, fullName, username = "", inviteToken, lmsExternalId } = body;
     if (!telegramId || !fullName) return c.json({ error: "telegramId and fullName required" }, 400);
 
-    const userId = getOrCreateUser(String(telegramId), fullName, username, inviteToken?.trim() || undefined);
+    const userId = getOrCreateUser(
+      String(telegramId),
+      fullName,
+      username,
+      inviteToken?.trim() || undefined,
+      lmsExternalId?.trim() || undefined,
+    );
     const user = getUserByTelegramId(String(telegramId));
     return c.json({ userId, user });
   } catch (e) {

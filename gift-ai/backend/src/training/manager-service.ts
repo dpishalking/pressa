@@ -45,7 +45,8 @@ function publicApiBase(): string {
 }
 
 export function buildManagerPracticeLinks(manager: TrainingManager): ManagerPracticeLinks {
-  const botLink = buildInviteLink(botUsername(), manager.inviteToken);
+  const user = botUsername();
+  const botLink = `https://t.me/${user}?start=link_${encodeURIComponent(manager.externalId)}`;
   const practicePageUrl = `${publicApiBase()}/trainer/practice?manager=${encodeURIComponent(manager.externalId)}`;
   return { manager, botLink, practicePageUrl, inviteToken: manager.inviteToken };
 }

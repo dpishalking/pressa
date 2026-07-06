@@ -113,7 +113,13 @@ export type ProcessResult = ProcessModeAResult | ProcessModeBResult;
 
 // API functions
 export const trainerApi = {
-  registerUser: (telegramId: number, fullName: string, username: string, inviteToken?: string) =>
+  registerUser: (
+    telegramId: number,
+    fullName: string,
+    username: string,
+    inviteToken?: string,
+    lmsExternalId?: string,
+  ) =>
     apiPost<{
       userId: string;
       user?: {
@@ -128,6 +134,7 @@ export const trainerApi = {
       fullName,
       username,
       ...(inviteToken ? { inviteToken } : {}),
+      ...(lmsExternalId ? { lmsExternalId } : {}),
     }),
 
   getScenarios: (difficulty?: string, skill?: string) =>
