@@ -67,81 +67,41 @@ export function formatEvaluation(raw: EvaluationResult): string {
   const e = normalizeEvaluation(raw);
   const emoji = scoreEmoji(e.totalScore);
   const resultLabel: Record<string, string> = {
-    ready_to_order: "🎉 Клиент готов оформить заказ",
-    interested: "✨ Клиент заинтересован",
-    thinking: "🤔 Клиент думает",
-    lost: "❌ Клиент ушёл",
-    abandoned: "👻 Клиент перестал отвечать",
-    incomplete: "⏸️ Диалог не завершён",
+    ready_to_order: "клиент готов оформить заказ",
+    interested: "клиент заинтересован",
+    thinking: "клиент думает",
+    lost: "клиент ушёл",
+    abandoned: "клиент перестал отвечать",
+    incomplete: "диалог не завершён",
   };
 
-  let text = `${emoji} <b>Результат тренировки: ${e.totalScore}/100</b>\n`;
-  text += `${resultLabel[e.finalResult] ?? e.finalResult}\n\n`;
+  const lines: string[] = [
+    `${emoji} <b>${e.totalScore}/100</b> — ${resultLabel[e.finalResult] ?? e.finalResult}`,
+  ];
 
-  // Category scores
-  text += `<b>📊 Оценка по категориям:</b>\n`;
-  const categories = [
-    ["qualification", "Квалификация", 20],
-    ["recommendation", "Рекомендация", 20],
-    ["productClarity", "Продукт", 15],
-    ["visual", "Визуал", 10],
-    ["pricing", "Расчёт", 15],
-    ["closing", "Закрытие", 10],
-    ["objectionHandling", "Возражения", 10],
-  ] as Array<[string, string, number]>;
-
-  for (const [key, label, max] of categories) {
-    const score = e.categoryScores[key] ?? 0;
-    const pct = Math.round((score / max) * 100);
-    const bar = pct >= 80 ? "🟩" : pct >= 50 ? "🟨" : "🟥";
-    text += `${bar} ${label}: ${score}/${max}\n`;
-  }
-  text += "\n";
-
-  if (e.strengths.length > 0) {
-    text += `<b>💪 Сильные стороны:</b>\n`;
-    for (const s of e.strengths.slice(0, 3)) {
-      text += `✅ ${escapeHtml(s)}\n`;
-    }
-    text += "\n";
+  for (const s of e.strengths.slice(0, 2)) {
+    lines.push(`✅ ${escapeHtml(truncate(s, 120))}`);
   }
 
-  if (e.mistakes.length > 0) {
-    text += `<b>⚠️ Ключевые ошибки:</b>\n`;
-    for (const m of e.mistakes.slice(0, 3)) {
-      text += `❌ ${escapeHtml(m)}\n`;
-    }
-    text += "\n";
+  for (const m of e.mistakes.slice(0, 2)) {
+    lines.push(`⚠️ ${escapeHtml(truncate(m, 120))}`);
   }
 
-  if (e.missedQuestions.length > 0) {
-    text += `<b>❓ Пропущенные вопросы:</b>\n`;
-    for (const q of e.missedQuestions.slice(0, 3)) {
-      text += `• ${escapeHtml(q)}\n`;
-    }
-    text += "\n";
+  const tip =
+    e.betterReplies[0]?.suggestion?.trim() ||
+    e.exampleNextMessage?.trim() ||
+    e.missedQuestions[0]?.trim();
+  if (tip) {
+    lines.push(`💡 ${escapeHtml(truncate(tip, 160))}`);
   }
 
-  if (e.clientFeeling) {
-    text += `<b>🧠 Клиент чувствовал:</b>\n${escapeHtml(e.clientFeeling)}\n\n`;
-  }
+  return lines.join("\n");
+}
 
-  if (e.betterReplies.length > 0) {
-    const br = e.betterReplies[0];
-    if (br?.originalText && br?.suggestion) {
-      text += `<b>💡 Лучший ответ вместо:</b>\n`;
-      text += `<i>«${escapeHtml(br.originalText.slice(0, 80))}»</i>\n`;
-      text += `<b>→ Можно было:</b> ${escapeHtml(br.suggestion)}\n`;
-      if (br.reason) text += `<i>${escapeHtml(br.reason)}</i>\n`;
-      text += "\n";
-    }
-  }
-
-  if (e.exampleNextMessage) {
-    text += `<b>📝 Следующий шаг:</b>\n${escapeHtml(e.exampleNextMessage)}\n`;
-  }
-
-  return text;
+function truncate(text: string, max: number): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, max - 1)}…`;
 }
 
 export function formatProgress(p: {

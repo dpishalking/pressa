@@ -562,17 +562,7 @@ bot.on("message:text", async (ctx) => {
 
       // Show hint if provided
       if (result.hint) {
-        const h = result.hint;
-        let hintText = `💡 <b>Подсказка</b>\n`;
-        hintText += `Этап: <i>${escapeHtml(h.currentStage)}</i>\n`;
-        if (h.unknownFacts.length > 0) {
-          hintText += `\nЕщё не выяснено:\n`;
-          for (const f of h.unknownFacts.slice(0, 3)) {
-            hintText += `• <i>${escapeHtml(f)}</i>\n`;
-          }
-        }
-        hintText += `\n➡️ <b>${escapeHtml(h.suggestion)}</b>`;
-        await ctx.reply(hintText, { parse_mode: "HTML" });
+        await ctx.reply(`💡 ${escapeHtml(result.hint.suggestion)}`, { parse_mode: "HTML" });
       }
 
       if (result.isPurchaseReady) {
