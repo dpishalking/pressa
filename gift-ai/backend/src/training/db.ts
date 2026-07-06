@@ -173,9 +173,13 @@ export function initTrainingDb(): void {
       `ALTER TABLE training_teams ADD COLUMN manager_telegram_id TEXT`,
       `ALTER TABLE training_teams ADD COLUMN service_tag TEXT DEFAULT 'retro-pressa'`,
       `ALTER TABLE training_users ADD COLUMN service_tag TEXT`,
+      `ALTER TABLE training_users ADD COLUMN lms_external_id TEXT`,
     ]) {
       try { db.exec(sql); } catch { /* column exists */ }
     }
+    try {
+      db.exec(`CREATE INDEX IF NOT EXISTS idx_training_users_lms_external ON training_users(lms_external_id)`);
+    } catch { /* column missing on very old DB */ }
     logger.info("Training DB tables initialized");
   } catch (e) {
     logger.error("Failed to init training DB", { error: String(e) });

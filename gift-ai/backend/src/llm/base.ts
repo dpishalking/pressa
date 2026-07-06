@@ -40,6 +40,20 @@ export interface GenerateScenarioOpts {
   skill?: string;
 }
 
+export interface GenerateLiveScenarioOpts {
+  template: "date_archive" | "gift_qualification";
+  templateBrief: string;
+  trainingSkill: string;
+  seed: {
+    uniqueToken: string;
+    buyer: string;
+    recipient: string;
+    location: string;
+    occasion: string;
+    date: string;
+  };
+}
+
 export interface GenerateHintOpts {
   scenario: TrainingScenario;
   history: Array<{ author: string; text: string }>;
@@ -61,5 +75,6 @@ export interface LLMProvider {
   classifyManagerAction(opts: ClassifyManagerActionOpts): Promise<ClassifiedAction>;
   evaluateSession(opts: EvaluateSessionOpts): Promise<EvaluationResult>;
   generateScenario(opts: GenerateScenarioOpts): Promise<Partial<TrainingScenario>>;
+  generateLiveScenario(opts: GenerateLiveScenarioOpts): Promise<Partial<TrainingScenario>>;
   generateHint(opts: GenerateHintOpts): Promise<HintResult>;
 }

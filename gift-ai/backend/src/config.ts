@@ -122,7 +122,7 @@ export function loadConfig(): AppConfig {
   const trainerNotifyToken =
     cfg.TRAINER_NOTIFY_BOT_TOKEN.trim() ||
     process.env.TRAINER_BOT_TOKEN?.trim() ||
-    telegramBotToken;
+    "";
   const trainerNotifyChatIds = cfg.TRAINER_NOTIFY_TELEGRAM_IDS.split(",")
     .map((id) => id.trim())
     .filter(Boolean);
@@ -132,7 +132,7 @@ export function loadConfig(): AppConfig {
     BITRIX24_PORTAL_URL: portalUrl,
     ROP_ALERTS_TELEGRAM_BOT_TOKEN: telegramBotToken,
     TRAINER_NOTIFY_BOT_TOKEN: trainerNotifyToken,
-    TRAINER_NOTIFY_TELEGRAM_IDS: trainerNotifyChatIds.length ? trainerNotifyChatIds : mergedChatIds,
+    TRAINER_NOTIFY_TELEGRAM_IDS: trainerNotifyChatIds,
     CRM_PROVIDER: cfg.BITRIX24_WEBHOOK_URL ? "bitrix24" : "none",
     ANALYTICS_COUNTRY_TAGS: cfg.ANALYTICS_COUNTRY_TAGS.split(",")
       .map((tag) => tag.trim())

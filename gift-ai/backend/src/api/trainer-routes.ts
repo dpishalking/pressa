@@ -20,6 +20,7 @@ import {
   getManagerPracticeLinks,
   ensureManagerPracticeLinks,
   listManagers,
+  listManagerSessionsByExternalId,
 } from "../training/manager-service.js";
 import { config } from "../config.js";
 import { getDb } from "../db/client.js";
@@ -167,6 +168,19 @@ trainerRouter.get("/managers", async (c) => {
   if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
   const managers = listManagers();
   return c.json({ managers });
+});
+
+trainerRouter.get("/managers/:externalId/sessions", async (c) => {
+  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+
+  try {
+    const externalId = c.req.param("externalId");
+    const sessions = listManagerSessionsByExternalId(externalId);
+    return c.json({ sessions });
+  } catch (e) {
+    logger.error("list manager sessions error", { error: String(e) });
+    return c.json({ error: String(e) }, 500);
+  }
 });
 
 function requireAdmin(c: { req: { header: (name: string) => string | undefined } }): boolean {

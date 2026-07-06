@@ -137,3 +137,56 @@ export function listManagers(): TrainingManager[] {
   const rows = db.prepare("SELECT * FROM training_managers ORDER BY full_name ASC").all() as Array<Record<string, unknown>>;
   return rows.map(mapManagerRow);
 }
+
+export type ManagerBotSessionRow = {
+  id: string;
+  scenarioId: string;
+  scenarioName: string;
+  difficulty: string | null;
+  mode: string;
+  status: string;
+  score: number | null;
+  result: string | null;
+  hintsUsed: number;
+  startedAt: string;
+  completedAt: string | null;
+  mistakes: string[];
+};
+
+export function listManagerSessionsByExternalId(externalId: string): ManagerBotSessionRow[] {
+  const db = getDb();
+  const manager = getManagerByExternalId(externalId);
+  if (!manager) return [];
+
+  const invite = getInvite(manager.inviteToken);
+  const teamId = invite?.teamId ?? null;
+
+  const rows = db.prepare(`
+    SELECT s.id, s.scenario_id, sc.name AS scenario_name, sc.difficulty,
+           s.mode, s.status, s.score, s.result, s.hints_used, s.started_at, s.completed_at,
+           e.mistakes_json
+    FROM training_sessions s
+    JOIN training_scenarios sc ON sc.id = s.scenario_id
+    JOIN training_users u ON u.id = s.user_id
+    LEFT JOIN training_evaluations e ON e.session_id = s.id
+    WHERE u.lms_external_id = ?
+       OR (? IS NOT NULL AND u.team_id = ?)
+    ORDER BY s.started_at DESC
+    LIMIT 100
+  `).all(externalId, teamId, teamId) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    id: String(row.id),
+    scenarioId: String(row.scenario_id),
+    scenarioName: String(row.scenario_name),
+    difficulty: row.difficulty ? String(row.difficulty) : null,
+    mode: String(row.mode),
+    status: String(row.status),
+    score: row.score != null ? Number(row.score) : null,
+    result: row.result ? String(row.result) : null,
+    hintsUsed: Number(row.hints_used ?? 0),
+    startedAt: String(row.started_at),
+    completedAt: row.completed_at ? String(row.completed_at) : null,
+    mistakes: JSON.parse(String(row.mistakes_json ?? "[]")) as string[],
+  }));
+}

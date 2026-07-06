@@ -62,6 +62,8 @@ function normalizeScenario(raw: Partial<TrainingScenario>): TrainingScenario {
   };
 }
 
+export const normalizeTrainingScenario = normalizeScenario;
+
 function generateId(): string {
   return Math.random().toString(36).slice(2, 10);
 }

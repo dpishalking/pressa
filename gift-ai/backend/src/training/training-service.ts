@@ -34,6 +34,13 @@ export function getOrCreateUser(
   let teamId: string | null = null;
   let serviceTag: string | null = null;
   let resolvedName = fullName;
+  let lmsExternalId: string | null = null;
+
+  if (inviteToken) {
+    const managerRow = db.prepare("SELECT external_id FROM training_managers WHERE invite_token = ?")
+      .get(inviteToken) as { external_id: string } | undefined;
+    if (managerRow) lmsExternalId = String(managerRow.external_id);
+  }
 
   const existing = db.prepare("SELECT id, team_id FROM training_users WHERE telegram_id = ?")
     .get(telegramId) as { id: string; team_id: string | null } | undefined;
@@ -55,17 +62,19 @@ export function getOrCreateUser(
     db.prepare(`
       UPDATE training_users
       SET full_name = ?, username = ?, team_id = COALESCE(?, team_id),
-          service_tag = COALESCE(?, service_tag), updated_at = ?
+          service_tag = COALESCE(?, service_tag),
+          lms_external_id = COALESCE(?, lms_external_id),
+          updated_at = ?
       WHERE telegram_id = ?
-    `).run(resolvedName, username, teamId, serviceTag, new Date().toISOString(), telegramId);
+    `).run(resolvedName, username, teamId, serviceTag, lmsExternalId, new Date().toISOString(), telegramId);
     return existing.id;
   }
 
   const id = genId();
   db.prepare(`
-    INSERT INTO training_users (id, telegram_id, full_name, username, role, team_id, service_tag, is_active, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'employee', ?, ?, 1, ?, ?)
-  `).run(id, telegramId, resolvedName, username, teamId, serviceTag, new Date().toISOString(), new Date().toISOString());
+    INSERT INTO training_users (id, telegram_id, full_name, username, role, team_id, service_tag, lms_external_id, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'employee', ?, ?, ?, 1, ?, ?)
+  `).run(id, telegramId, resolvedName, username, teamId, serviceTag, lmsExternalId, new Date().toISOString(), new Date().toISOString());
   return id;
 }
 
