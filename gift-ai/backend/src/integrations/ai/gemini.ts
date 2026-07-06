@@ -24,7 +24,7 @@ function modelsToTry(): string[] {
 
 async function callGeminiOnce(
   model: string,
-  opts: { system: string; user: string; json?: boolean; timeoutMs?: number },
+  opts: { system: string; user: string; json?: boolean; timeoutMs?: number; maxOutputTokens?: number },
 ): Promise<GeminiResult> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.GEMINI_API_KEY}`;
 
@@ -33,7 +33,7 @@ async function callGeminiOnce(
     contents: [{ role: "user", parts: [{ text: opts.user }] }],
     generationConfig: {
       temperature: 0.7,
-      maxOutputTokens: 4096,
+      maxOutputTokens: opts.maxOutputTokens ?? 4096,
       ...(opts.json ? { responseMimeType: "application/json" } : {}),
     },
   };
@@ -70,6 +70,9 @@ export async function callGemini(opts: {
   user: string;
   json?: boolean;
   timeoutMs?: number;
+  maxOutputTokens?: number;
+  /** Prefer fallback model first (helps when primary is overloaded). */
+  preferFallbackModel?: boolean;
 }): Promise<GeminiResult> {
   if (!config.GEMINI_API_KEY) {
     throw new Error("GEMINI_API_KEY не настроен");
@@ -77,7 +80,10 @@ export async function callGemini(opts: {
 
   let lastError: Error | null = null;
 
-  for (const model of modelsToTry()) {
+  const models = modelsToTry();
+  const modelOrder = opts.preferFallbackModel && models.length > 1 ? [...models].reverse() : models;
+
+  for (const model of modelOrder) {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         return await callGeminiOnce(model, opts);
