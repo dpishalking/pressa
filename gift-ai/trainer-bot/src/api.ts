@@ -1,11 +1,31 @@
-const API_URL = (
+const PRODUCTION_API_URL = "https://pressa-production-d394.up.railway.app";
+const LEGACY_VPS_URL = "http://85.92.111.202:3100";
+
+export const API_URL = (
   process.env.API_URL ??
   process.env.TRAINER_API_URL ??
-  "http://85.92.111.202:3100"
+  PRODUCTION_API_URL
 ).replace(/\/$/, "");
 const TRAINER_BASE = `${API_URL}/trainer`;
 
 console.log(`[trainer-bot] API_URL=${API_URL}`);
+if (API_URL.includes("85.92.111.202") || API_URL === LEGACY_VPS_URL.replace(/\/$/, "")) {
+  console.error(
+    "[trainer-bot] ⚠️ API_URL points to legacy VPS — set API_URL=https://pressa-production-d394.up.railway.app on Railway",
+  );
+}
+
+export async function verifyBackendConnection(): Promise<void> {
+  try {
+    const res = await fetch(`${API_URL}/health`, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) throw new Error(`health ${res.status}`);
+    const data = (await res.json()) as { ok?: boolean };
+    if (!data.ok) throw new Error("health not ok");
+    console.log(`[trainer-bot] ✓ Backend reachable at ${API_URL}`);
+  } catch (e) {
+    console.error(`[trainer-bot] ✗ Backend unreachable at ${API_URL}:`, e);
+  }
+}
 
 async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${TRAINER_BASE}${path}`, {

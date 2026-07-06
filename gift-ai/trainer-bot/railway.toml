@@ -1,5 +1,5 @@
-# Railway Variables (required for rp-bi):
-# API_URL=http://85.92.111.202:3100
+# Railway Variables (required):
+# API_URL=https://pressa-production-d394.up.railway.app
 # TRAINER_BOT_TOKEN=...
 
 [build]

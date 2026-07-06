@@ -7,7 +7,7 @@ import {
   postSessionKeyboard,
   SESSION_BUTTONS_HELP,
 } from "./keyboards.js";
-import { trainerApi } from "./api.js";
+import { trainerApi, verifyBackendConnection } from "./api.js";
 import {
   formatEvaluation,
   difficultyLabel,
@@ -667,6 +667,7 @@ await bot.api.deleteWebhook().catch(() => {});
 bot.start({
   onStart: async (botInfo) => {
     console.log(`✅ @${botInfo.username} — Retro Pressa Trainer Bot`);
+    await verifyBackendConnection();
     try {
       await bot.api.setMyCommands([
         { command: "start", description: "Главное меню" },
