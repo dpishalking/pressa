@@ -2,27 +2,18 @@ import { Bot, GrammyError, InlineKeyboard, type Context } from "grammy";
 import { getSession, setSession } from "./session.js";
 import {
   mainMenuKeyboard,
-  modeKeyboard,
-  difficultyKeyboard,
-  skillKeyboard,
-  scenarioListKeyboard,
   templateScenarioKeyboard,
   inSessionKeyboard,
   postSessionKeyboard,
-  quickExercisesKeyboard,
 } from "./keyboards.js";
 import { trainerApi } from "./api.js";
 import {
   formatEvaluation,
-  formatProgress,
-  formatLeaderboard,
   difficultyLabel,
   skillLabel,
-  scoreEmoji,
   moodEmoji,
   escapeHtml,
 } from "./format.js";
-import { QUICK_EXERCISES } from "./quick-exercises.js";
 
 const BOT_TOKEN = process.env.TRAINER_BOT_TOKEN ?? process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -332,76 +323,6 @@ bot.command("train", async (ctx) => {
   }
 });
 
-bot.command("quick", async (ctx) => {
-  const uid = userId(ctx);
-  try {
-    await ensureUser(ctx);
-    setSession(uid, { screen: "quick_exercise" });
-    await ctx.reply(
-      "⚡ <b>Быстрые тренировки</b>\n\nКороткие упражнения на 3–5 минут. Выбери навык:",
-      { parse_mode: "HTML", reply_markup: quickExercisesKeyboard() },
-    );
-  } catch (e) {
-    await ctx.reply("Ошибка. Попробуйте /start");
-  }
-});
-
-bot.command("progress", async (ctx) => {
-  const uid = userId(ctx);
-  try {
-    const { userId: internalId } = await ensureUser(ctx);
-    const progress = await trainerApi.getProgress(internalId);
-    await ctx.reply(formatProgress(progress), {
-      parse_mode: "HTML",
-      reply_markup: new InlineKeyboard().text("🏠 Меню", "menu:main"),
-    });
-  } catch (e) {
-    console.error("[progress]", e);
-    await ctx.reply("Не удалось загрузить прогресс.");
-  }
-});
-
-bot.command("history", async (ctx) => {
-  const uid = userId(ctx);
-  try {
-    const { userId: internalId } = await ensureUser(ctx);
-    const data = await trainerApi.getHistory(internalId);
-    const sessions = data.sessions;
-
-    if (sessions.length === 0) {
-      await ctx.reply("Тренировок пока нет. Начни первую!", { reply_markup: mainMenuKeyboard() });
-      return;
-    }
-
-    let text = "<b>📜 История тренировок</b>\n\n";
-    for (const s of sessions.slice(0, 10)) {
-      const score = s.score ? `${scoreEmoji(Number(s.score))} ${s.score}/100` : "—";
-      text += `• ${s.scenario_name} (${difficultyLabel(String(s.difficulty))})\n`;
-      text += `  ${score} · ${new Date(String(s.started_at)).toLocaleDateString("ru-RU")}\n`;
-    }
-
-    await ctx.reply(text, {
-      parse_mode: "HTML",
-      reply_markup: new InlineKeyboard().text("🏠 Меню", "menu:main"),
-    });
-  } catch (e) {
-    console.error("[history]", e);
-    await ctx.reply("Не удалось загрузить историю.");
-  }
-});
-
-bot.command("rating", async (ctx) => {
-  try {
-    const data = await trainerApi.getLeaderboard();
-    await ctx.reply(formatLeaderboard(data.leaderboard), {
-      parse_mode: "HTML",
-      reply_markup: new InlineKeyboard().text("🏠 Меню", "menu:main"),
-    });
-  } catch (e) {
-    await ctx.reply("Не удалось загрузить рейтинг.");
-  }
-});
-
 bot.command("finish", async (ctx) => {
   const uid = userId(ctx);
   try {
@@ -416,18 +337,9 @@ bot.command("help", async (ctx) => {
   await ctx.reply(
     `<b>🎓 Тренажёр Retro Pressa</b>
 
-Команды:
 /train — начать ролевую тренировку
-/quick — быстрые упражнения (3–5 мин)
-/progress — ваш прогресс и навыки
-/history — история тренировок
-/rating — рейтинг команды
-/finish — завершить текущую тренировку
-/help — эта справка
-
-<b>Режимы тренировки:</b>
-<b>Режим A</b> — вы играете менеджера, AI — клиента. Клиент не раскрывает всю информацию сразу.
-<b>Режим B</b> — AI показывает эталонную продажу, вы играете клиента. После оцените, что сработало.`,
+/finish — завершить текущий диалог
+/start — главное меню`,
     { parse_mode: "HTML", reply_markup: mainMenuKeyboard() },
   );
 });
@@ -475,167 +387,6 @@ bot.on("callback_query:data", async (ctx) => {
         await ctx.reply("Не удалось запустить сценарий. Попробуйте ещё раз.", {
           reply_markup: templateScenarioKeyboard(),
         });
-      }
-      return;
-    }
-
-    if (data === "menu:quick") {
-      setSession(uid, { screen: "quick_exercise" });
-      await ctx.reply(
-        "⚡ <b>Быстрые тренировки</b>\n\nВыберите навык для отработки:",
-        { parse_mode: "HTML", reply_markup: quickExercisesKeyboard() },
-      );
-      return;
-    }
-
-    if (data === "menu:progress") {
-      const { userId: internalId } = await ensureUser(ctx);
-      const progress = await trainerApi.getProgress(internalId);
-      await ctx.reply(formatProgress(progress), {
-        parse_mode: "HTML",
-        reply_markup: new InlineKeyboard().text("🏠 Меню", "menu:main"),
-      });
-      return;
-    }
-
-    if (data === "menu:history") {
-      const { userId: internalId } = await ensureUser(ctx);
-      const historyData = await trainerApi.getHistory(internalId);
-      const sessions = historyData.sessions;
-
-      if (sessions.length === 0) {
-        await ctx.reply("Тренировок пока нет. Начни первую!", { reply_markup: mainMenuKeyboard() });
-        return;
-      }
-
-      let text = "<b>📜 История тренировок</b>\n\n";
-      for (const s of sessions.slice(0, 10)) {
-        const score = s.score ? `${scoreEmoji(Number(s.score))} ${s.score}/100` : "—";
-        text += `• ${s.scenario_name} (${difficultyLabel(String(s.difficulty))})\n`;
-        text += `  ${score} · ${new Date(String(s.started_at)).toLocaleDateString("ru-RU")}\n`;
-      }
-
-      await ctx.reply(text, {
-        parse_mode: "HTML",
-        reply_markup: new InlineKeyboard().text("🏠 Меню", "menu:main"),
-      });
-      return;
-    }
-
-    if (data === "menu:leaderboard") {
-      const leaderboardData = await trainerApi.getLeaderboard();
-      await ctx.reply(formatLeaderboard(leaderboardData.leaderboard), {
-        parse_mode: "HTML",
-        reply_markup: new InlineKeyboard().text("🏠 Меню", "menu:main"),
-      });
-      return;
-    }
-
-    if (data === "menu:help") {
-      await ctx.reply(
-        "<b>📖 Помощь</b>\n\n/train — ролевка\n/quick — быстрые упражнения\n/progress — прогресс\n/finish — завершить тренировку",
-        { parse_mode: "HTML", reply_markup: mainMenuKeyboard() },
-      );
-      return;
-    }
-
-    // Mode selection
-    if (data.startsWith("mode:")) {
-      const mode = data.slice("mode:".length) as "mode_a" | "mode_b";
-      setSession(uid, { currentMode: mode, screen: "select_difficulty" });
-
-      const modeLabel = mode === "mode_a"
-        ? "💼 Режим A: вы — менеджер, AI — клиент"
-        : "👤 Режим B: AI — менеджер, вы — клиент";
-
-      await ctx.reply(
-        `${modeLabel}\n\n<b>Выберите уровень сложности:</b>`,
-        { parse_mode: "HTML", reply_markup: difficultyKeyboard() },
-      );
-      return;
-    }
-
-    // Difficulty selection
-    if (data.startsWith("diff:")) {
-      const diff = data.slice("diff:".length);
-      const session = getSession(uid);
-      setSession(uid, { pendingDifficulty: diff === "random" ? undefined : diff, screen: "select_skill" });
-
-      await ctx.reply(
-        `${difficultyLabel(diff === "random" ? "random" : diff)}\n\n<b>Выберите навык для отработки:</b>`,
-        { parse_mode: "HTML", reply_markup: skillKeyboard() },
-      );
-      return;
-    }
-
-    // Skill selection → load scenarios
-    if (data.startsWith("skill:")) {
-      const skill = data.slice("skill:".length);
-      const session = getSession(uid);
-
-      try {
-        const { userId: internalId } = await ensureUser(ctx);
-        const scenariosData = await trainerApi.getScenarios(
-          skill === "random" ? undefined : session.pendingDifficulty,
-          skill === "random" ? undefined : skill,
-        );
-
-        if (scenariosData.scenarios.length === 0) {
-          await ctx.reply("Сценариев для выбранных параметров не найдено. Попробуйте другой уровень или навык.", {
-            reply_markup: difficultyKeyboard(),
-          });
-          return;
-        }
-
-        setSession(uid, { pendingSkill: skill === "random" ? undefined : skill });
-        await ctx.reply(
-          `<b>Выберите сценарий:</b>`,
-          {
-            parse_mode: "HTML",
-            reply_markup: scenarioListKeyboard(scenariosData.scenarios),
-          },
-        );
-      } catch (e) {
-        console.error("[skill selection]", e);
-        await ctx.reply("Не удалось загрузить сценарии. Попробуйте ещё раз.");
-      }
-      return;
-    }
-
-    // Scenario selection → start session
-    if (data.startsWith("scenario:")) {
-      const scenarioId = data.slice("scenario:".length);
-      const session = getSession(uid);
-
-      try {
-        const { userId: internalId } = await ensureUser(ctx);
-        const mode = session.currentMode ?? "mode_a";
-
-        await ctx.reply("⏳ Загружаю сценарий…");
-        const result = await trainerApi.startSession(internalId, scenarioId, mode);
-
-        setSession(uid, {
-          screen: "in_session",
-          currentSessionId: result.sessionId,
-          currentScenarioId: scenarioId,
-          currentMode: mode,
-        });
-
-        const scenario = result.scenario;
-        const modeDesc = mode === "mode_a"
-          ? "💼 Вы — менеджер. AI — клиент.\n\nKлиент НЕ раскрывает сразу всю информацию. Квалифицируйте через диалог.\n\nДля завершения: /finish или кнопка «Завершить»."
-          : "👤 Вы — клиент. AI — менеджер.\n\nПосмотрите, как работает сильный менеджер.\n\nДля завершения: /finish";
-
-        let introText = `<b>🎭 Сценарий: ${escapeHtml(scenario.name)}</b>\n`;
-        introText += `${difficultyLabel(scenario.difficulty)} · ${skillLabel(scenario.trainingSkill)}\n\n`;
-        introText += `${modeDesc}\n\n`;
-        introText += `<b>═══ Начало диалога ═══</b>`;
-
-        await ctx.reply(introText, { parse_mode: "HTML" });
-        await showSessionDialogStart(ctx, mode, result, session.hintMode ?? false);
-      } catch (e) {
-        console.error("[start scenario]", e);
-        await ctx.reply("Не удалось запустить сценарий. Попробуйте ещё раз.", { reply_markup: mainMenuKeyboard() });
       }
       return;
     }
@@ -739,36 +490,6 @@ bot.on("callback_query:data", async (ctx) => {
       }
       return;
     }
-
-    if (data === "session:next") {
-      setSession(uid, { screen: "select_difficulty" });
-      await ctx.reply(
-        "Выберите следующий уровень:",
-        { reply_markup: difficultyKeyboard() },
-      );
-      return;
-    }
-
-    // Quick exercises
-    if (data.startsWith("quick:")) {
-      const exerciseId = data.slice("quick:".length);
-      const exercise = QUICK_EXERCISES[exerciseId];
-      if (!exercise) {
-        await ctx.reply("Упражнение не найдено.", { reply_markup: mainMenuKeyboard() });
-        return;
-      }
-
-      setSession(uid, { screen: "quick_exercise", currentScenarioId: `quick:${exerciseId}` });
-
-      await ctx.reply(
-        `⚡ <b>${escapeHtml(exercise.name)}</b>\n\n${escapeHtml(exercise.description)}\n\n<b>Задание:</b>\n${escapeHtml(exercise.prompt)}\n\n✍️ Напишите ваш ответ:`,
-        {
-          parse_mode: "HTML",
-          reply_markup: new InlineKeyboard().text("⬅️ Назад", "menu:quick"),
-        },
-      );
-      return;
-    }
   } catch (e) {
     console.error("[callback]", data, e);
     await ctx.reply("Что-то пошло не так. Попробуйте /start").catch(() => {});
@@ -790,24 +511,6 @@ bot.on("message:text", async (ctx) => {
     session = getSession(uid);
   } catch {
     await ctx.reply("Не удалось подключиться к серверу. Запустите backend и попробуйте снова.");
-    return;
-  }
-
-  // Quick exercise mode
-  if (session.screen === "quick_exercise" && session.currentScenarioId?.startsWith("quick:")) {
-    const exerciseId = session.currentScenarioId.slice("quick:".length);
-    const exercise = QUICK_EXERCISES[exerciseId];
-
-    await ctx.reply(
-      `✅ <b>Ваш ответ получен!</b>\n\n<b>💡 Совет:</b>\n${escapeHtml(exercise?.successTip ?? "Хорошая попытка! Продолжайте практиковаться.")}`,
-      {
-        parse_mode: "HTML",
-        reply_markup: new InlineKeyboard()
-          .text("🔁 Повторить", `quick:${exerciseId}`)
-          .text("📋 Все упражнения", "menu:quick").row()
-          .text("🏠 Меню", "menu:main"),
-      },
-    );
     return;
   }
 
@@ -917,10 +620,6 @@ bot.start({
       await bot.api.setMyCommands([
         { command: "start", description: "Главное меню" },
         { command: "train", description: "Начать ролевую тренировку" },
-        { command: "quick", description: "Быстрые упражнения (3–5 мин)" },
-        { command: "progress", description: "Мой прогресс" },
-        { command: "history", description: "История тренировок" },
-        { command: "rating", description: "Рейтинг команды" },
         { command: "finish", description: "Завершить текущую тренировку" },
         { command: "help", description: "Помощь" },
       ]);

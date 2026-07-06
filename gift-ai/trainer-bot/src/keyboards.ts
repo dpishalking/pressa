@@ -1,13 +1,7 @@
 import { InlineKeyboard } from "grammy";
 
 export function mainMenuKeyboard(): InlineKeyboard {
-  return new InlineKeyboard()
-    .text("🎭 Начать ролевку", "menu:train").row()
-    .text("⚡ Быстрая тренировка", "menu:quick").row()
-    .text("📊 Мой прогресс", "menu:progress")
-    .text("📜 История", "menu:history").row()
-    .text("🏆 Рейтинг команды", "menu:leaderboard").row()
-    .text("❓ Помощь", "menu:help");
+  return new InlineKeyboard().text("🎭 Начать ролевку", "menu:train");
 }
 
 export function modeKeyboard(): InlineKeyboard {
@@ -83,7 +77,6 @@ export function inSessionKeyboard(mode: "mode_a" | "mode_b", hintMode = false): 
 export function postSessionKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("🔁 Повторить сценарий", "session:repeat").row()
-    .text("➡️ Следующий сценарий", "session:next").row()
     .text("🏠 Главное меню", "menu:main");
 }
 
