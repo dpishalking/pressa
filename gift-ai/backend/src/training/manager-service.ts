@@ -157,9 +157,7 @@ export type ManagerBotSessionRow = {
 export function listManagerSessionsByExternalId(externalId: string): ManagerBotSessionRow[] {
   const db = getDb();
   const manager = getManagerByExternalId(externalId);
-  if (!manager) return [];
-
-  const invite = getInvite(manager.inviteToken);
+  const invite = manager ? getInvite(manager.inviteToken) : null;
   const teamId = invite?.teamId ?? null;
 
   const rows = db.prepare(`

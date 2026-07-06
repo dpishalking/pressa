@@ -216,6 +216,15 @@ trainerRouter.post("/users/register", async (c) => {
     const { telegramId, fullName, username = "", inviteToken, lmsExternalId } = body;
     if (!telegramId || !fullName) return c.json({ error: "telegramId and fullName required" }, 400);
 
+    const linkedExternalId = lmsExternalId?.trim();
+    if (linkedExternalId) {
+      ensureManagerPracticeLinks({
+        externalId: linkedExternalId,
+        fullName: fullName.trim(),
+        serviceTag: "retro-pressa",
+      });
+    }
+
     const userId = getOrCreateUser(
       String(telegramId),
       fullName,

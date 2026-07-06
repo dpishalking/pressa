@@ -5,8 +5,7 @@ import { applyStateRules, checkLost, checkPurchaseReady, getStateMoodLabel } fro
 import { getScenarioFromDb, listScenariosFromDb } from "./scenario-loader.js";
 import { redeemInvite } from "./invite-service.js";
 import { notifyTrainingSessionComplete } from "./training-notify.js";
-import { buildFallbackClientReply, sanitizeClientReply } from "./client-reply-fallback.js";
-import { resolveSessionEvaluation } from "./session-evaluation.js";
+import { reconcileEvaluationWithHistory } from "./evaluation-reconcile.js";
 import type {
   TrainingScenario,
   ClientState,
@@ -62,14 +61,26 @@ export function getOrCreateUser(
   }
 
   if (existing) {
-    db.prepare(`
+    const updateSql = lmsExternalId
+      ? `
       UPDATE training_users
       SET full_name = ?, username = ?, team_id = COALESCE(?, team_id),
           service_tag = COALESCE(?, service_tag),
-          lms_external_id = COALESCE(?, lms_external_id),
+          lms_external_id = ?,
           updated_at = ?
       WHERE telegram_id = ?
-    `).run(resolvedName, username, teamId, serviceTag, lmsExternalId, new Date().toISOString(), telegramId);
+    `
+      : `
+      UPDATE training_users
+      SET full_name = ?, username = ?, team_id = COALESCE(?, team_id),
+          service_tag = COALESCE(?, service_tag),
+          updated_at = ?
+      WHERE telegram_id = ?
+    `;
+    const params = lmsExternalId
+      ? [resolvedName, username, teamId, serviceTag, lmsExternalId, new Date().toISOString(), telegramId]
+      : [resolvedName, username, teamId, serviceTag, new Date().toISOString(), telegramId];
+    db.prepare(updateSql).run(...params);
     return existing.id;
   }
 
@@ -197,6 +208,10 @@ export interface ProcessMessageResult {
   hint?: { currentStage: string; knownFacts: string[]; unknownFacts: string[]; suggestion: string; clientMoodLabel: string };
 }
 
+function buildFallbackClientReply(): string {
+  return "Понял вас. Подскажите, пожалуйста: для кого подарок и к какой дате нужно успеть? Хочу предложить подходящий формат.";
+}
+
 export async function processEmployeeMessage(
   sessionId: string,
   employeeText: string,
@@ -236,28 +251,17 @@ export async function processEmployeeMessage(
 
   // Generate client reply
   let clientReply: string;
-  const replyContext = {
-    employeeText,
-    history,
-    clientState: newState,
-    scenario,
-  };
   try {
-    const generated = await llm.generateClientReply({
+    clientReply = await llm.generateClientReply({
       scenario,
       history: [...history, { author: "employee", text: employeeText }],
       clientState: newState,
       lastManagerAction: classified,
       revealedFacts: newRevealedFacts,
     });
-    clientReply = sanitizeClientReply(generated, replyContext);
   } catch (e) {
     logger.warn("generateClientReply failed, using fallback reply", { sessionId, error: String(e) });
-    clientReply = buildFallbackClientReply(replyContext);
-  }
-
-  if (!clientReply.trim()) {
-    clientReply = buildFallbackClientReply(replyContext);
+    clientReply = buildFallbackClientReply();
   }
 
   // Save client message (with state before/after)
@@ -393,12 +397,14 @@ export async function finishSession(sessionId: string): Promise<EvaluationResult
 
   const llm = getLLMProvider();
   const wasManuallyFinished = session.status === "active";
-  const evaluation = await resolveSessionEvaluation(llm, {
+  const rawEvaluation = await llm.evaluateSession({
     scenario,
     history,
     stateHistory,
     finalState,
     hintsUsed,
+  });
+  const evaluation = reconcileEvaluationWithHistory(rawEvaluation, history, {
     manuallyFinished: wasManuallyFinished,
   });
 
