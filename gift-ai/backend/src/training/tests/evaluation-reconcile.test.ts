@@ -65,6 +65,31 @@ describe("reconcileEvaluationWithHistory", () => {
     expect(out.strengths).toHaveLength(1);
   });
 
+  it("detects legacy 50/incomplete Gemini failure shape", () => {
+    expect(
+      isTechnicalFallbackEvaluation({
+        totalScore: 50,
+        categoryScores: {
+          qualification: 10,
+          recommendation: 10,
+          productClarity: 7,
+          visual: 5,
+          pricing: 7,
+          closing: 5,
+          objectionHandling: 5,
+        },
+        strengths: [],
+        mistakes: [],
+        missedQuestions: [],
+        clientEmotions: [],
+        turningPoints: [],
+        stateChanges: [],
+        betterReplies: [],
+        finalResult: "incomplete",
+      }),
+    ).toBe(true);
+  });
+
   it("detects technical fallback from LLM", () => {
     expect(
       isTechnicalFallbackEvaluation({

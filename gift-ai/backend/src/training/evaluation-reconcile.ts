@@ -129,7 +129,15 @@ export function reconcileEvaluationWithHistory(
 const TECHNICAL_FAILURE_RE = /технический сбой|не удалось получить оценку/i;
 
 export function isTechnicalFallbackEvaluation(evaluation: EvaluationResult): boolean {
-  return evaluation.mistakes.some((m) => TECHNICAL_FAILURE_RE.test(m));
+  if (evaluation.mistakes.some((m) => TECHNICAL_FAILURE_RE.test(m))) return true;
+  // Gemini failure shape when mistake text was stripped upstream
+  return (
+    evaluation.totalScore === 50 &&
+    evaluation.finalResult === "incomplete" &&
+    evaluation.strengths.length === 0 &&
+    evaluation.betterReplies.length === 0 &&
+    !evaluation.exampleNextMessage?.trim()
+  );
 }
 
 /** Heuristic scoring when Gemini evaluation fails — still useful feedback for the manager. */

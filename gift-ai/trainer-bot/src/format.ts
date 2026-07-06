@@ -50,7 +50,7 @@ function normalizeEvaluation(raw: EvaluationResult): EvaluationResult {
   const mistakes = (Array.isArray(raw.mistakes) ? raw.mistakes : []).filter(
     (m) => !/технический сбой|не удалось получить оценку/i.test(m),
   );
-  return {
+  const e: EvaluationResult = {
     totalScore: Number.isFinite(raw.totalScore) ? raw.totalScore : 0,
     categoryScores: raw.categoryScores ?? {},
     strengths: Array.isArray(raw.strengths) ? raw.strengths : [],
@@ -64,6 +64,17 @@ function normalizeEvaluation(raw: EvaluationResult): EvaluationResult {
     clientFeeling: raw.clientFeeling,
     exampleNextMessage: raw.exampleNextMessage,
   };
+
+  if (
+    mistakes.length === 0 &&
+    e.strengths.length === 0 &&
+    e.totalScore <= 55 &&
+    e.finalResult === "incomplete"
+  ) {
+    e.mistakes = ["Не удалось получить развёрнутую оценку — попробуйте завершить снова"];
+  }
+
+  return e;
 }
 
 export function formatEvaluation(raw: EvaluationResult): string {
