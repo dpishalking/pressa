@@ -23,6 +23,8 @@ import {
   listManagerSessionsByExternalId,
   getLmsLinkStatus,
 } from "../training/manager-service.js";
+import { listActiveSessions, listRecentSessions, getAdminSessionDetail } from "../training/admin-monitor.js";
+import { submitSessionFeedback, notifySessionFeedback } from "../training/feedback-service.js";
 import { config } from "../config.js";
 import { getDb } from "../db/client.js";
 import { logger } from "../logger.js";
@@ -478,6 +480,50 @@ trainerRouter.get("/sessions/:sessionId/evaluation", async (c) => {
   }
 });
 
+trainerRouter.post("/sessions/:sessionId/feedback", async (c) => {
+  try {
+    const sessionId = c.req.param("sessionId");
+    const body = await c.req.json() as { userId: string; rating: number; comment?: string };
+    if (!body.userId || !body.rating) return c.json({ error: "userId and rating required" }, 400);
+
+    const feedback = submitSessionFeedback({
+      sessionId,
+      userId: body.userId,
+      rating: body.rating,
+      comment: body.comment,
+    });
+
+    const db = getDb();
+    const meta = db.prepare(`
+      SELECT u.full_name, sc.name AS scenario_name, s.score
+      FROM training_sessions s
+      JOIN training_users u ON u.id = s.user_id
+      JOIN training_scenarios sc ON sc.id = s.scenario_id
+      WHERE s.id = ?
+    `).get(sessionId) as { full_name: string; scenario_name: string; score: number | null } | undefined;
+
+    if (meta) {
+      void notifySessionFeedback({
+        sessionId,
+        employeeName: meta.full_name,
+        scenarioName: meta.scenario_name,
+        score: meta.score,
+        rating: feedback.rating,
+        comment: feedback.comment,
+      });
+    }
+
+    return c.json({ feedback });
+  } catch (e) {
+    logger.error("submit feedback error", { error: String(e) });
+    const msg = String(e);
+    if (/not found|does not belong|not completed|rating must/i.test(msg)) {
+      return c.json({ error: msg }, 400);
+    }
+    return c.json({ error: msg }, 500);
+  }
+});
+
 // ─── Progress ─────────────────────────────────────────────────────────────────
 
 trainerRouter.get("/users/:userId/active-session", async (c) => {
@@ -590,9 +636,46 @@ trainerRouter.get("/admin/invites/:token", async (c) => {
   return c.json({ invite, inviteLink, practicePageUrl });
 });
 
+// ─── Admin: Session Monitor ───────────────────────────────────────────────────
+
+trainerRouter.get("/admin/sessions/active", async (c) => {
+  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  try {
+    const limit = Math.min(Number(c.req.query("limit") ?? 20), 50);
+    return c.json({ sessions: listActiveSessions(limit) });
+  } catch (e) {
+    logger.error("admin active sessions error", { error: String(e) });
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
+trainerRouter.get("/admin/sessions/recent", async (c) => {
+  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  try {
+    const limit = Math.min(Number(c.req.query("limit") ?? 20), 50);
+    return c.json({ sessions: listRecentSessions(limit) });
+  } catch (e) {
+    logger.error("admin recent sessions error", { error: String(e) });
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
+trainerRouter.get("/admin/sessions/:sessionId", async (c) => {
+  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  try {
+    const detail = getAdminSessionDetail(c.req.param("sessionId"));
+    if (!detail) return c.json({ error: "Session not found" }, 404);
+    return c.json(detail);
+  } catch (e) {
+    logger.error("admin session detail error", { error: String(e) });
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
 // ─── Admin: Team Analytics ────────────────────────────────────────────────────
 
 trainerRouter.get("/admin/team-analytics", async (c) => {
+  if (!requireAdmin(c)) return c.json({ error: "unauthorized" }, 401);
   try {
     const db = getDb();
 

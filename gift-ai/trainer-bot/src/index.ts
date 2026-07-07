@@ -5,9 +5,20 @@ import {
   templateScenarioKeyboard,
   inSessionKeyboard,
   postSessionKeyboard,
+  feedbackRatingKeyboard,
+  feedbackSkipCommentKeyboard,
   SESSION_BUTTONS_HELP,
 } from "./keyboards.js";
 import { trainerApi, verifyBackendConnection } from "./api.js";
+import {
+  adminConfigured,
+  isTrainerAdmin,
+  showAdminMenu,
+  showAdminSummary,
+  showActiveSessions,
+  showRecentSessions,
+  showSessionDetail,
+} from "./admin.js";
 import {
   formatEvaluation,
   difficultyLabel,
@@ -157,22 +168,55 @@ async function finishTraining(ctx: Context, uid: string): Promise<void> {
 
   const evalText = formatEvaluation(evaluation);
   try {
-    await ctx.reply(evalText, {
-      parse_mode: "HTML",
-      reply_markup: postSessionKeyboard(),
-    });
+    await ctx.reply(evalText, { parse_mode: "HTML" });
   } catch (e) {
     console.error("[finish session reply]", e);
     const plain = evalText.replace(/<[^>]+>/g, "");
     try {
-      await ctx.reply(plain, { reply_markup: postSessionKeyboard() });
+      await ctx.reply(plain);
     } catch {
-      await ctx.reply(
-        `Результат: ${evaluation.totalScore ?? "?"}/100`,
-        { reply_markup: postSessionKeyboard() },
-      );
+      await ctx.reply(`Результат: ${evaluation.totalScore ?? "?"}/100`);
     }
   }
+
+  await promptStudentFeedback(ctx, uid, sessionId);
+}
+
+async function promptStudentFeedback(ctx: Context, uid: string, sessionId: string): Promise<void> {
+  setSession(uid, {
+    screen: "awaiting_feedback",
+    pendingFeedbackSessionId: sessionId,
+    pendingFeedbackRating: undefined,
+  });
+  await ctx.reply(
+    "💬 <b>Как прошла ролевка?</b>\n\nОцените от 1 до 5 — ваш отзыв увидит наставник.",
+    { parse_mode: "HTML", reply_markup: feedbackRatingKeyboard(sessionId) },
+  );
+}
+
+async function finishFeedbackFlow(ctx: Context, uid: string, thanksText = "Спасибо за отзыв!"): Promise<void> {
+  setSession(uid, {
+    screen: "awaiting_evaluation",
+    pendingFeedbackSessionId: undefined,
+    pendingFeedbackRating: undefined,
+  });
+  await ctx.reply(thanksText, { reply_markup: postSessionKeyboard() });
+}
+
+async function submitStudentFeedback(
+  ctx: Context,
+  uid: string,
+  sessionId: string,
+  rating: number,
+  comment?: string,
+): Promise<void> {
+  const internalId = getSession(uid).userId ?? (await ensureUser(ctx)).userId;
+  try {
+    await trainerApi.submitFeedback(sessionId, internalId, rating, comment);
+  } catch (e) {
+    console.error("[submit feedback]", e);
+  }
+  await finishFeedbackFlow(ctx, uid);
 }
 
 async function showTemplateScenarioMenu(ctx: Context): Promise<void> {
@@ -254,6 +298,8 @@ function resetToMainMenuSession(uid: string): void {
     screen: "main_menu",
     currentSessionId: undefined,
     pendingEvaluationSessionId: undefined,
+    pendingFeedbackSessionId: undefined,
+    pendingFeedbackRating: undefined,
     pendingDifficulty: undefined,
     pendingSkill: undefined,
   });
@@ -376,14 +422,28 @@ bot.command("finish", async (ctx) => {
 });
 
 bot.command("help", async (ctx) => {
+  const adminHint = isTrainerAdmin(ctx) ? "\n/admin — панель наставника" : "";
   await ctx.reply(
     `<b>🎓 Тренажёр Retro Pressa</b>
 
 /train — начать ролевую тренировку
 /finish — завершить текущий диалог
-/start — главное меню`,
+/start — главное меню${adminHint}`,
     { parse_mode: "HTML", reply_markup: mainMenuKeyboard() },
   );
+});
+
+bot.command("admin", async (ctx) => {
+  if (!isTrainerAdmin(ctx)) {
+    await ctx.reply("Нет доступа.");
+    return;
+  }
+  if (!adminConfigured()) {
+    await ctx.reply("Админ-панель не настроена. Нужны ADMIN_API_KEY и ADMIN_TELEGRAM_IDS на Railway.");
+    return;
+  }
+  setSession(userId(ctx), { screen: "admin_panel" });
+  await showAdminMenu(ctx);
 });
 
 // ─── Callback Queries ─────────────────────────────────────────────────────────
@@ -402,8 +462,66 @@ bot.on("callback_query:data", async (ctx) => {
 
     await ctx.answerCallbackQuery().catch(() => {});
 
+    const session = getSession(uid);
+
+    if (data.startsWith("admin:")) {
+      if (!isTrainerAdmin(ctx)) {
+        await ctx.reply("Нет доступа.");
+        return;
+      }
+      if (data === "admin:menu") {
+        setSession(uid, { screen: "admin_panel" });
+        await showAdminMenu(ctx);
+        return;
+      }
+      if (data === "admin:summary") {
+        await showAdminSummary(ctx);
+        return;
+      }
+      if (data === "admin:active") {
+        await showActiveSessions(ctx);
+        return;
+      }
+      if (data === "admin:recent") {
+        await showRecentSessions(ctx);
+        return;
+      }
+      if (data.startsWith("admin:session:")) {
+        await showSessionDetail(ctx, data.slice("admin:session:".length));
+        return;
+      }
+    }
+
+    if (data.startsWith("feedback:")) {
+      const parts = data.split(":");
+      const feedbackSessionId = parts[1];
+      const action = parts[2];
+      if (!feedbackSessionId) return;
+
+      if (action === "skip") {
+        await finishFeedbackFlow(ctx, uid, "Хорошо, продолжайте тренировки!");
+        return;
+      }
+      if (action === "done" && session.pendingFeedbackRating) {
+        await submitStudentFeedback(ctx, uid, feedbackSessionId, session.pendingFeedbackRating);
+        return;
+      }
+      const rating = Number(action);
+      if (rating >= 1 && rating <= 5) {
+        setSession(uid, {
+          screen: "awaiting_feedback_comment",
+          pendingFeedbackSessionId: feedbackSessionId,
+          pendingFeedbackRating: rating,
+        });
+        await ctx.reply(
+          `Спасибо! ${"⭐".repeat(rating)}\n\nНапишите комментарий одним сообщением или нажмите кнопку ниже.`,
+          { reply_markup: feedbackSkipCommentKeyboard(feedbackSessionId) },
+        );
+        return;
+      }
+    }
+
     if (data === "menu:train") {
-      const session = getSession(uid);
       const { userId: internalId } = await ensureUser(ctx);
       await restoreActiveSession(uid, internalId);
       const restored = getSession(uid);
@@ -565,6 +683,17 @@ bot.on("message:text", async (ctx) => {
     return;
   }
 
+  if (session.screen === "awaiting_feedback_comment" && session.pendingFeedbackSessionId && session.pendingFeedbackRating) {
+    await submitStudentFeedback(
+      ctx,
+      uid,
+      session.pendingFeedbackSessionId,
+      session.pendingFeedbackRating,
+      text,
+    );
+    return;
+  }
+
   // In active training session
   if (session.screen === "in_session" && session.currentSessionId) {
     const mode = session.currentMode ?? "mode_a";
@@ -668,6 +797,11 @@ bot.start({
   onStart: async (botInfo) => {
     console.log(`✅ @${botInfo.username} — Retro Pressa Trainer Bot`);
     await verifyBackendConnection();
+    if (adminConfigured()) {
+      console.log("[trainer-bot] ✓ Admin panel enabled");
+    } else {
+      console.warn("[trainer-bot] Admin panel disabled — set ADMIN_API_KEY + ADMIN_TELEGRAM_IDS");
+    }
     try {
       await bot.api.setMyCommands([
         { command: "start", description: "Главное меню" },

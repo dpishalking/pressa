@@ -239,4 +239,32 @@ export const trainerApi = {
 
   getEvaluation: (sessionId: string) =>
     apiGet<{ evaluation: EvaluationResult }>(`/sessions/${sessionId}/evaluation`),
+
+  submitFeedback: (sessionId: string, userId: string, rating: number, comment?: string) =>
+    apiPost<{ feedback: { sessionId: string; rating: number; comment: string | null } }>(
+      `/sessions/${sessionId}/feedback`,
+      { userId, rating, ...(comment ? { comment } : {}) },
+    ),
+};
+
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? "";
+
+async function adminApiGet<T>(path: string): Promise<T> {
+  if (!ADMIN_API_KEY) throw new Error("ADMIN_API_KEY not configured");
+  const res = await fetch(`${TRAINER_BASE}${path}`, {
+    headers: { "x-admin-key": ADMIN_API_KEY },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`API ${res.status}: ${text.slice(0, 200)}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+export const trainerAdminApi = {
+  getTeamAnalytics: () => adminApiGet<Record<string, unknown>>("/admin/team-analytics"),
+  getActiveSessions: (limit = 15) => adminApiGet<{ sessions: Array<Record<string, unknown>> }>(`/admin/sessions/active?limit=${limit}`),
+  getRecentSessions: (limit = 15) => adminApiGet<{ sessions: Array<Record<string, unknown>> }>(`/admin/sessions/recent?limit=${limit}`),
+  getSessionDetail: (sessionId: string) => adminApiGet<Record<string, unknown>>(`/admin/sessions/${sessionId}`),
 };

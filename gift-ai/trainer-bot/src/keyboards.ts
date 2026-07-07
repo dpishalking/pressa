@@ -90,6 +90,20 @@ export function postSessionKeyboard(): InlineKeyboard {
     .text("🏠 Главное меню", "menu:main");
 }
 
+export function feedbackRatingKeyboard(sessionId: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("⭐", `feedback:${sessionId}:1`)
+    .text("⭐⭐", `feedback:${sessionId}:2`)
+    .text("⭐⭐⭐", `feedback:${sessionId}:3`).row()
+    .text("⭐⭐⭐⭐", `feedback:${sessionId}:4`)
+    .text("⭐⭐⭐⭐⭐", `feedback:${sessionId}:5`).row()
+    .text("Пропустить", `feedback:${sessionId}:skip`);
+}
+
+export function feedbackSkipCommentKeyboard(sessionId: string): InlineKeyboard {
+  return new InlineKeyboard().text("Готово, без комментария", `feedback:${sessionId}:done`);
+}
+
 export function quickExercisesKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
     .text("🔍 Выяснить получателя", "quick:recipient").row()

@@ -5,6 +5,9 @@ export type TrainerScreen =
   | "select_skill"
   | "in_session"
   | "awaiting_evaluation"
+  | "awaiting_feedback"
+  | "awaiting_feedback_comment"
+  | "admin_panel"
   | "progress"
   | "history"
   | "leaderboard"
@@ -22,6 +25,8 @@ export interface TrainerSession {
   pendingSkill?: string;
   hintMode?: boolean;
   pendingEvaluationSessionId?: string;
+  pendingFeedbackSessionId?: string;
+  pendingFeedbackRating?: number;
   lastMessageIds: number[];
 }
 

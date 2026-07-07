@@ -163,6 +163,16 @@ CREATE TABLE IF NOT EXISTS training_managers (
 );
 
 CREATE INDEX IF NOT EXISTS idx_training_managers_external ON training_managers(external_id);
+
+CREATE TABLE IF NOT EXISTS training_session_feedback (
+  session_id TEXT PRIMARY KEY REFERENCES training_sessions(id),
+  user_id TEXT NOT NULL REFERENCES training_users(id),
+  rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comment TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_training_session_feedback_user ON training_session_feedback(user_id);
 `;
 
 export function initTrainingDb(): void {

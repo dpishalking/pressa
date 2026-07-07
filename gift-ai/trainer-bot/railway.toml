@@ -1,6 +1,8 @@
 # Railway Variables (required):
 # API_URL=https://pressa-production-d394.up.railway.app
 # TRAINER_BOT_TOKEN=...
+# ADMIN_API_KEY=...          (same as backend)
+# ADMIN_TELEGRAM_IDS=123456   (your Telegram user id)
 
 [build]
 builder = "NIXPACKS"
