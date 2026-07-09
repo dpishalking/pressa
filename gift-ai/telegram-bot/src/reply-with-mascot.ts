@@ -38,6 +38,64 @@ export async function replyWithPhotoFile(
   extra?: Parameters<Context["reply"]>[1],
   opts?: PhotoReplyOpts & FormatOpts,
 ): Promise<void> {
+  await replyWithPhotoFiles(ctx, [photoPath], text, extra, opts);
+}
+
+/** Одно фото или альбом (до 10). Клавиатура уходит отдельным сообщением с текстом, если фото несколько. */
+export async function replyWithPhotoFiles(
+  ctx: Context,
+  photoPaths: string[],
+  text: string,
+  extra?: Parameters<Context["reply"]>[1],
+  opts?: PhotoReplyOpts & FormatOpts,
+): Promise<void> {
+  const paths = photoPaths.filter(Boolean).slice(0, 10);
+  if (!paths.length) {
+    await sendTextMessage(ctx, text, extra, opts);
+    return;
+  }
+
+  if (paths.length === 1) {
+    await replyWithSinglePhoto(ctx, paths[0]!, text, extra, opts);
+    return;
+  }
+
+  const uid = userIdFromCtx(ctx);
+  const captionSource = opts?.caption?.trim() || text;
+  const captionHtml = smartFormatReply(captionSource, opts).slice(0, CAPTION_LIMIT);
+  const followUp = opts?.followUp?.trim() || text;
+
+  try {
+    await ctx.api.sendChatAction(ctx.chat!.id, "upload_photo");
+    const media = paths.map((photoPath, index) => ({
+      type: "photo" as const,
+      media: new InputFile(photoPath),
+      ...(index === 0
+        ? {
+            caption: captionHtml,
+            parse_mode: "HTML" as const,
+          }
+        : {}),
+    }));
+    const album = await ctx.replyWithMediaGroup(media);
+    trackBotMessages(
+      uid,
+      album.map((m) => m.message_id),
+    );
+    await sendTextMessage(ctx, followUp, extra, opts);
+  } catch (e) {
+    console.error("[photo album send failed]", e);
+    await replyWithSinglePhoto(ctx, paths[0]!, text, extra, opts);
+  }
+}
+
+async function replyWithSinglePhoto(
+  ctx: Context,
+  photoPath: string,
+  text: string,
+  extra?: Parameters<Context["reply"]>[1],
+  opts?: PhotoReplyOpts & FormatOpts,
+): Promise<void> {
   const html = smartFormatReply(text, opts);
   const photo = new InputFile(photoPath);
   const uid = userIdFromCtx(ctx);

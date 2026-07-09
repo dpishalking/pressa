@@ -1,7 +1,7 @@
 import { Bot, GrammyError, InlineKeyboard, type Context } from "grammy";
 import { configureBotProfile } from "./bot-profile.js";
 import { giftLabel } from "./gift-emojis.js";
-import { giftPhotoPath } from "./gift-photos.js";
+import { giftPhotoPaths } from "./gift-photos.js";
 import { smartFormatReply } from "./format.js";
 import { t } from "./i18n.js";
 import {
@@ -13,7 +13,7 @@ import {
 } from "./keyboards.js";
 import { languageTitle, normalizeLanguage, type BotLanguage } from "./languages.js";
 import { logMascotInventory, resetMascotRotation, sceneForStage } from "./mascot.js";
-import { replyWithMascot, replyWithPhotoFile } from "./reply-with-mascot.js";
+import { replyWithMascot, replyWithPhotoFiles } from "./reply-with-mascot.js";
 import { clearBotScreen, rewindBotMessages, trackBotMessage, userIdFromCtx } from "./message-cleanup.js";
 import { enqueueUserTask } from "./user-queue.js";
 import { getSession, setSession } from "./session.js";
@@ -208,12 +208,12 @@ async function showCatalogGift(ctx: Context, externalId: string, opts?: { fromCo
   const displayName = giftLabel(gift.externalId, gift.name);
   const caption = `<b>${displayName}</b>\n\n💰 ${gift.priceLabel}`;
   const text = gift.description;
-  const photo = giftPhotoPath(gift.externalId);
+  const photos = giftPhotoPaths(gift.externalId);
   const markup = { reply_markup: catalogGiftKeyboard(gift.externalId, language, { consult: fromConsult }) };
 
-  if (photo) {
+  if (photos.length) {
     if (!fromConsult) shownGiftByUser.set(uid, gift.externalId);
-    await replyWithPhotoFile(ctx, photo, text, markup, {
+    await replyWithPhotoFiles(ctx, photos, text, markup, {
       caption,
       followUp: gift.description,
     });
@@ -243,7 +243,7 @@ async function showHandoffRecommendation(
   });
 
   const gift = result.recommendedGift ?? null;
-  const giftPhoto = gift ? giftPhotoPath(gift.externalId) : null;
+  const giftPhotos = gift ? giftPhotoPaths(gift.externalId) : [];
   const handoffMarkup = {
     reply_markup: handoffActionsKeyboard(
       result.managerHandoff.buttonLabel,
@@ -252,8 +252,8 @@ async function showHandoffRecommendation(
     ),
   };
 
-  if (gift && giftPhoto) {
-    await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, { stage: result.stage });
+  if (gift && giftPhotos.length) {
+    await replyWithPhotoFiles(ctx, giftPhotos, result.reply, handoffMarkup, { stage: result.stage });
     shownGiftByUser.set(uid, gift.externalId);
   } else {
     const scene = sceneForStage(result.stage);
@@ -348,9 +348,9 @@ async function handleUserTextInner(ctx: Context, text: string): Promise<void> {
   }
 
   const gift = result.recommendedGift ?? null;
-  const giftPhoto = gift ? giftPhotoPath(gift.externalId) : null;
+  const giftPhotos = gift ? giftPhotoPaths(gift.externalId) : [];
   const isNewGift = Boolean(gift && shownGiftByUser.get(uid) !== gift.externalId);
-  const showGiftPhoto = Boolean(gift && giftPhoto && isNewGift && result.stage >= 8);
+  const showGiftPhoto = Boolean(gift && giftPhotos.length && isNewGift && result.stage >= 8);
   const handoffMarkup = result.managerHandoff
     ? {
         reply_markup: handoffActionsKeyboard(
@@ -362,8 +362,8 @@ async function handleUserTextInner(ctx: Context, text: string): Promise<void> {
     : undefined;
   const formatOpts = { stage: result.stage };
 
-  if (showGiftPhoto && gift && giftPhoto) {
-    await replyWithPhotoFile(ctx, giftPhoto, result.reply, handoffMarkup, formatOpts);
+  if (showGiftPhoto && gift && giftPhotos.length) {
+    await replyWithPhotoFiles(ctx, giftPhotos, result.reply, handoffMarkup, formatOpts);
     shownGiftByUser.set(uid, gift.externalId);
   } else {
     const scene = sceneForStage(result.stage, { isComplete: result.isComplete });
