@@ -11,7 +11,8 @@ import { listCanonicalProductsWithPhotos } from "../modules/gift-photos.js";
 import { normalizeLanguage } from "../modules/languages.js";
 import { transcribeAudioBase64 } from "../integrations/ai/transcribe.js";
 import { seedGifts } from "../seed.js";
-import { getBotStats, recordAnalyticsEvent, type AnalyticsEventType } from "../modules/analytics.js";
+import { applyBotCatalogPolicy } from "../modules/catalog-policy.js";
+import { getBotStats, listApplications, recordAnalyticsEvent, type AnalyticsEventType } from "../modules/analytics.js";
 import { getDb } from "../db/client.js";
 import { parseBitrixWebhookBody } from "../integrations/alerts/bitrix-webhook-parse.js";
 import { resolveTelegramChatIds, ropAlertsConfig, ropAlertsEnabled } from "../integrations/alerts/alerts-config.js";
@@ -113,8 +114,9 @@ api.post("/chat/begin", async (c) => {
     language?: string;
     catalogGiftExternalId?: string;
     telegramUsername?: string;
+    giftForMan?: boolean;
   }>();
-  const { channel, channelUserId, language, catalogGiftExternalId, telegramUsername } = body;
+  const { channel, channelUserId, language, catalogGiftExternalId, telegramUsername, giftForMan } = body;
   if (!channel || !channelUserId) return c.json({ error: "channel and channelUserId required" }, 400);
   const result = chatEngine.beginConsultation({
     channel,
@@ -122,6 +124,7 @@ api.post("/chat/begin", async (c) => {
     language,
     catalogGiftExternalId,
     telegramUsername,
+    giftForMan,
   });
   return c.json(result);
 });
@@ -347,6 +350,7 @@ admin.post("/sync-sheets", async (c) => {
       csvUrl: body.url || base.csvUrl,
       csvUrls: base.csvUrls,
     });
+    applyBotCatalogPolicy();
     return c.json({ ok: true, ...result, giftsInCatalog: knowledgeBase.listGifts().length });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -357,6 +361,13 @@ admin.post("/sync-sheets", async (c) => {
 admin.get("/stats", (c) => {
   const period = c.req.query("period") === "today" ? "today" : "all";
   return c.json(getBotStats(period));
+});
+
+admin.get("/applications", (c) => {
+  const period = c.req.query("period") === "today" ? "today" : "all";
+  const page = Number(c.req.query("page") ?? 0);
+  const pageSize = Number(c.req.query("pageSize") ?? 10);
+  return c.json(listApplications({ period, page, pageSize }));
 });
 
 admin.post("/events", async (c) => {

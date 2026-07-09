@@ -23,7 +23,7 @@ export const CANONICAL_PRODUCTS: CanonicalProduct[] = [
   },
   {
     externalId: "life-book",
-    defaultName: "Книга жизни",
+    defaultName: "Книга жизни в заголовках газет",
     aliases: [
       "книга жизни",
       "книга жизни в заголовках газет",

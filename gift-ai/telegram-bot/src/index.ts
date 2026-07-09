@@ -19,12 +19,12 @@ import { enqueueUserTask } from "./user-queue.js";
 import { getSession, setSession } from "./session.js";
 import { isTranscribeAvailable, mimeForTelegramAudio, transcribeTelegramFile } from "./transcribe.js";
 import {
-  adminStatsKeyboard,
-  fetchBotStats,
-  formatStatsMessage,
+  editAdminPanel,
+  editApplicationsList,
   isBotAdmin,
   recordBotEvent,
   sendAdminPanel,
+  sendApplicationsList,
   adminConfigured,
 } from "./admin.js";
 
@@ -291,7 +291,11 @@ async function showConsultHandoff(ctx: Context): Promise<void> {
   }
 }
 
-async function beginConsultation(ctx: Context, catalogGiftExternalId?: string): Promise<void> {
+async function beginConsultation(
+  ctx: Context,
+  catalogGiftExternalId?: string,
+  opts?: { giftForMan?: boolean },
+): Promise<void> {
   await clearBotScreen(ctx);
 
   const uid = channelUserId(ctx);
@@ -308,6 +312,7 @@ async function beginConsultation(ctx: Context, catalogGiftExternalId?: string): 
     ...apiIdentity(ctx),
     language,
     catalogGiftExternalId,
+    giftForMan: opts?.giftForMan ?? true,
   });
 
   await replyWithMascot(ctx, result.reply, sceneForStage(1, { isStart: true }), undefined, { stage: 1 });
@@ -522,26 +527,43 @@ bot.on("callback_query:data", async (ctx) => {
       }
       const period = data.endsWith("today") ? "today" : ("all" as const);
       try {
-        const stats = await fetchBotStats(period);
-        const text = formatStatsMessage(stats);
         await ctx.answerCallbackQuery();
         try {
-          await ctx.editMessageText(text, {
-            parse_mode: "HTML",
-            reply_markup: adminStatsKeyboard(period),
-          });
+          await editAdminPanel(ctx, period);
         } catch (editErr) {
           const msg = editErr instanceof Error ? editErr.message : "";
           if (!/message is not modified/i.test(msg)) {
-            await ctx.reply(text, {
-              parse_mode: "HTML",
-              reply_markup: adminStatsKeyboard(period),
-            });
+            await sendAdminPanel(ctx, period);
           }
         }
       } catch (e) {
         console.error("[admin callback]", e);
         await ctx.answerCallbackQuery({ text: "Не удалось обновить статистику" });
+      }
+      return;
+    }
+
+    if (data.startsWith("admin:apps:")) {
+      if (!isBotAdmin(ctx)) {
+        await ctx.answerCallbackQuery();
+        return;
+      }
+      const [, , periodRaw, pageRaw] = data.split(":");
+      const period = periodRaw === "today" ? "today" : "all";
+      const page = Number(pageRaw) || 0;
+      try {
+        await ctx.answerCallbackQuery();
+        try {
+          await editApplicationsList(ctx, period, page);
+        } catch (editErr) {
+          const msg = editErr instanceof Error ? editErr.message : "";
+          if (!/message is not modified/i.test(msg)) {
+            await sendApplicationsList(ctx, period, page);
+          }
+        }
+      } catch (e) {
+        console.error("[admin apps]", e);
+        await ctx.answerCallbackQuery({ text: "Не удалось загрузить заявки" });
       }
       return;
     }
@@ -554,12 +576,7 @@ bot.on("callback_query:data", async (ctx) => {
     }
 
     if (data === "menu:consult") {
-      await beginConsultation(ctx);
-      return;
-    }
-
-    if (data === "menu:catalog") {
-      await showCatalog(ctx);
+      await beginConsultation(ctx, undefined, { giftForMan: true });
       return;
     }
 

@@ -30,7 +30,7 @@ function stageFromFields(fields: QualificationFields): ConsultationStage {
 export function stageLabel(stage: ConsultationStage): string {
   const labels: Record<number, string> = {
     1: "повод",
-    2: "кому подарок",
+    2: "кому из близких мужчин",
     3: "сроки и доставка",
     4: "бюджет",
     8: "краткая рекомендация",
@@ -45,7 +45,7 @@ export function questionForStage(stage: ConsultationStage, fields: Qualification
     case 1:
       return "🎂 По какому поводу подарок?";
     case 2:
-      return "👤 Кому дарите и сколько лет?";
+      return "👔 Кому именно дарите — папе, дедушке, мужу, брату, сыну, другу? Сколько лет?";
     case 3:
       return "📅 К какой дате нужен подарок и в какой город доставлять?";
     case 4:
@@ -115,7 +115,7 @@ export function buildStageHint(fields: QualificationFields, conversationStage: n
       : "";
 
   const depthNote =
-    "\nНЕ спрашивай про хобби, истории из жизни, мечты, увлечения и «что она любит» — это задаст менеджер. Если клиент сам написал — сохрани в comments, но не углубляйся.";
+    "\nНЕ спрашивай про хобби, истории из жизни, мечты, увлечения — это задаст менеджер. Подарок всегда для мужчины (папа, дедушка, муж, брат, сын, друг). Если клиент сам написал детали — сохрани в comments, но не углубляйся.";
 
   return `Сейчас этап ${next} (${stageLabel(next)}). Уже собрано: ${done.length ? done.join(", ") : "пока мало"}.
 ОБЯЗАТЕЛЬНО задай следующий короткий вопрос по этапу ${next}. Не заканчивай сообщение без вопроса (кроме финала с контактами).

@@ -7,6 +7,7 @@ import { sheetSyncConfig, sheetSyncEnabled } from "./integrations/sheets/config.
 import { knowledgeBase } from "./modules/knowledge-base.js";
 import { logger } from "./logger.js";
 import { seedGifts } from "./seed.js";
+import { applyBotCatalogPolicy } from "./modules/catalog-policy.js";
 import { startRopAlertsWorker } from "./integrations/alerts/alert-worker.js";
 import { syncCsoBotWebhook, syncCsoBotCommands } from "./integrations/alerts/cso-bot.js";
 import { initTrainingDb } from "./training/db.js";
@@ -14,6 +15,7 @@ import { loadScenariosFromFiles, upsertScenariosToDb } from "./training/scenario
 
 getDb();
 seedGifts();
+applyBotCatalogPolicy();
 initTrainingDb();
 
 try {
@@ -29,6 +31,7 @@ try {
 if (sheetSyncEnabled()) {
   syncGiftsFromConfig(sheetSyncConfig())
     .then((r) => {
+      applyBotCatalogPolicy();
       logger.info("Sheet sync on startup complete", r);
     })
     .catch((e) => {

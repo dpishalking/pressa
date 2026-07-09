@@ -4,8 +4,7 @@ import type { BotLanguage } from "./languages.js";
 type Strings = {
   menuWelcome: string;
   menuPrompt: string;
-  menuConsult: string;
-  menuCatalog: string;
+  menuConsultMan: string;
   menuLang: string;
   menuBack: string;
   langSaved: (title: string) => string;
@@ -24,8 +23,7 @@ type Strings = {
 const RU: Strings = {
   menuWelcome: menuWelcomeText("ru"),
   menuPrompt: "Что хотите сделать?",
-  menuConsult: "🎁 Подобрать подарок под ситуацию",
-  menuCatalog: "📋 Выбрать из каталога",
+  menuConsultMan: "👔 Подобрать подарок мужчине",
   menuLang: "🌐 Выбрать язык / Select language",
   menuBack: "⬅️ В меню",
   langSaved: (title) => `Язык общения: ${title}\n\nМожете вернуться в меню и начать подбор.`,
@@ -46,8 +44,7 @@ const RU: Strings = {
 const EN: Strings = {
   menuWelcome: menuWelcomeText("en"),
   menuPrompt: "What would you like to do?",
-  menuConsult: "🎁 Find a gift for my situation",
-  menuCatalog: "📋 Browse catalog",
+  menuConsultMan: "👔 Find a gift for a man",
   menuLang: "🌐 Select language",
   menuBack: "⬅️ Main menu",
   langSaved: (title) => `Chat language: ${title}\n\nGo back to the menu when you're ready.`,
@@ -67,8 +64,7 @@ const EN: Strings = {
 const LV: Strings = {
   menuWelcome: menuWelcomeText("lv"),
   menuPrompt: "Ko vēlaties darīt?",
-  menuConsult: "🎁 Piemeklēt dāvanu situācijai",
-  menuCatalog: "📋 Izvēlēties no kataloga",
+  menuConsultMan: "👔 Piemeklēt dāvanu vīrietim",
   menuLang: "🌐 Izvēlēties valodu / Select language",
   menuBack: "⬅️ Izvēlne",
   langSaved: (title) => `Sarunas valoda: ${title}\n\nAtgriezieties izvēlnē, kad esat gatavi.`,
@@ -87,8 +83,7 @@ const LV: Strings = {
 const ET: Strings = {
   menuWelcome: menuWelcomeText("et"),
   menuPrompt: "Mida soovite teha?",
-  menuConsult: "🎁 Leia kingitus minu olukorda",
-  menuCatalog: "📋 Vali kataloogist",
+  menuConsultMan: "👔 Leia kingitus mehele",
   menuLang: "🌐 Vali keel / Select language",
   menuBack: "⬅️ Menüüsse",
   langSaved: (title) => `Suhtluskeel: ${title}\n\nMenüüsse saate tagasi minna, kui olete valmis.`,
@@ -107,8 +102,7 @@ const ET: Strings = {
 const LT: Strings = {
   menuWelcome: menuWelcomeText("lt"),
   menuPrompt: "Ką norite daryti?",
-  menuConsult: "🎁 Parinkti dovaną situacijai",
-  menuCatalog: "📋 Rinktis iš katalogo",
+  menuConsultMan: "👔 Parinkti dovaną vyrui",
   menuLang: "🌐 Pasirinkti kalbą / Select language",
   menuBack: "⬅️ Į meniu",
   langSaved: (title) => `Bendravimo kalba: ${title}\n\nGrįžkite į meniu, kai būsite pasiruošę.`,

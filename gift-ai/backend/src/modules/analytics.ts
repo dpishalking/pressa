@@ -9,6 +9,18 @@ export type AnalyticsEventType =
   | "handoff_shown"
   | "manager_click";
 
+export type BotApplication = {
+  id: string;
+  channelUserId: string;
+  occasion: string;
+  recipient: string;
+  gift: string;
+  budget: string;
+  telegram: string;
+  status: string;
+  createdAt: string;
+};
+
 export type BotStats = {
   period: "all" | "today";
   uniqueVisitors: number;
@@ -34,16 +46,16 @@ export type BotStats = {
   };
   topOccasions: [string, number][];
   topGifts: [string, number][];
-  recentApplications: Array<{
-    id: string;
-    channelUserId: string;
-    occasion: string;
-    gift: string;
-    budget: string;
-    telegram: string;
-    status: string;
-    createdAt: string;
-  }>;
+  recentApplications: BotApplication[];
+};
+
+export type ApplicationsList = {
+  period: "all" | "today";
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  items: BotApplication[];
 };
 
 const STATS_TZ = process.env.STATS_TIMEZONE ?? "Europe/Moscow";
@@ -85,6 +97,81 @@ export function recordAnalyticsEvent(opts: {
     JSON.stringify(opts.metadata ?? {}),
     new Date().toISOString(),
   );
+}
+
+function mapApplicationRow(r: {
+  id: string;
+  channel_user_id: string;
+  fields_json: string;
+  status: string;
+  created_at: string;
+}): BotApplication {
+  let fields: Record<string, string> = {};
+  try {
+    fields = JSON.parse(r.fields_json);
+  } catch {
+    /* ignore */
+  }
+  const recipientParts = [fields.recipient, fields.relationship, fields.recipientAge ? `${fields.recipientAge} лет` : ""]
+    .filter(Boolean)
+    .join(", ");
+  return {
+    id: r.id,
+    channelUserId: r.channel_user_id,
+    occasion: fields.occasion ?? "—",
+    recipient: recipientParts || "—",
+    gift: fields.recommendedGiftName ?? fields.catalogGiftInterest ?? "—",
+    budget: fields.budget ?? "—",
+    telegram: fields.telegram ?? "—",
+    status: r.status,
+    createdAt: r.created_at,
+  };
+}
+
+export function listApplications(opts: {
+  period?: "all" | "today";
+  page?: number;
+  pageSize?: number;
+}): ApplicationsList {
+  const period = opts.period === "today" ? "today" : "all";
+  const pageSize = Math.min(20, Math.max(1, opts.pageSize ?? 10));
+  const page = Math.max(0, opts.page ?? 0);
+  const pConv = periodClause(period, "created_at");
+
+  const db = getDb();
+  const totalRow = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM conversations WHERE status IN ('handoff', 'completed')${pConv}`,
+    )
+    .get() as { n: number };
+  const total = totalRow?.n ?? 0;
+  const totalPages = total ? Math.ceil(total / pageSize) : 1;
+  const safePage = Math.min(page, Math.max(0, totalPages - 1));
+  const offset = safePage * pageSize;
+
+  const rows = db
+    .prepare(
+      `SELECT id, channel_user_id, fields_json, status, created_at
+       FROM conversations
+       WHERE status IN ('handoff', 'completed')${pConv}
+       ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
+    )
+    .all(pageSize, offset) as Array<{
+    id: string;
+    channel_user_id: string;
+    fields_json: string;
+    status: string;
+    created_at: string;
+  }>;
+
+  return {
+    period,
+    page: safePage,
+    pageSize,
+    total,
+    totalPages,
+    items: rows.map(mapApplicationRow),
+  };
 }
 
 export function getBotStats(period: "all" | "today" = "all"): BotStats {
@@ -214,23 +301,6 @@ export function getBotStats(period: "all" | "today" = "all"): BotStats {
     },
     topOccasions: occasionRows.map((r) => [r.occasion, r.n]),
     topGifts: giftRows.map((r) => [r.gift, r.n]),
-    recentApplications: recentRows.map((r) => {
-      let fields: Record<string, string> = {};
-      try {
-        fields = JSON.parse(r.fields_json);
-      } catch {
-        /* ignore */
-      }
-      return {
-        id: r.id,
-        channelUserId: r.channel_user_id,
-        occasion: fields.occasion ?? "—",
-        gift: fields.recommendedGiftName ?? fields.catalogGiftInterest ?? "—",
-        budget: fields.budget ?? "—",
-        telegram: fields.telegram ?? "—",
-        status: r.status,
-        createdAt: r.created_at,
-      };
-    }),
+    recentApplications: recentRows.map(mapApplicationRow),
   };
 }

@@ -57,6 +57,7 @@ export class ChatEngine {
     language?: string;
     catalogGiftExternalId?: string;
     telegramUsername?: string;
+    giftForMan?: boolean;
   }): { reply: string; conversationId: string; stage: number } {
     const language = normalizeLanguage(opts.language);
     const conv = conversationMemory.reset(opts.channel, opts.channelUserId);
@@ -68,6 +69,7 @@ export class ChatEngine {
 
     const fields: Partial<QualificationFields> = {
       uiLanguage: language,
+      recipientGender: "мужчина",
       catalogGiftInterest: catalogGift?.name ?? "",
       comments: catalogGift ? `Выбрал из каталога: ${catalogGift.name}` : "",
     };
@@ -78,14 +80,14 @@ export class ChatEngine {
 
     conversationMemory.update(conv.id, { fields: qualificationEngine.mergeFields(conv.fields, fields) });
 
-    const reply = buildGreeting(language, catalogGift?.name);
+    const reply = buildGreeting(language, catalogGift?.name, opts.giftForMan);
     conversationMemory.addMessage(conv.id, "assistant", reply);
     recordAnalyticsEvent({
       channel: opts.channel,
       channelUserId: opts.channelUserId,
       eventType: "consult_begin",
       conversationId: conv.id,
-      metadata: { catalogGift: catalogGift?.name },
+      metadata: { catalogGift: catalogGift?.name, giftForMan: opts.giftForMan ?? false },
     });
     return { reply, conversationId: conv.id, stage: 1 };
   }

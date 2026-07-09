@@ -18,6 +18,18 @@ function parseAdminAllowlist(raw: string): { ids: Set<string>; usernames: Set<st
 
 const ADMIN_ALLOWLIST = parseAdminAllowlist(process.env.ADMIN_TELEGRAM_IDS ?? "");
 
+export type BotApplication = {
+  id: string;
+  channelUserId: string;
+  occasion: string;
+  recipient: string;
+  gift: string;
+  budget: string;
+  telegram: string;
+  status: string;
+  createdAt: string;
+};
+
 export type BotStats = {
   period: "all" | "today";
   uniqueVisitors: number;
@@ -43,16 +55,16 @@ export type BotStats = {
   };
   topOccasions: [string, number][];
   topGifts: [string, number][];
-  recentApplications: Array<{
-    id: string;
-    channelUserId: string;
-    occasion: string;
-    gift: string;
-    budget: string;
-    telegram: string;
-    status: string;
-    createdAt: string;
-  }>;
+  recentApplications: BotApplication[];
+};
+
+export type ApplicationsList = {
+  period: "all" | "today";
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  items: BotApplication[];
 };
 
 export function isBotAdmin(ctx: Context): boolean {
@@ -110,14 +122,16 @@ function formatTopList(items: [string, number][]): string {
   return items.map(([name, n]) => `• ${escHtml(name)} — ${n}`).join("\n");
 }
 
-function formatRecent(apps: BotStats["recentApplications"]): string {
+function formatApplicationEntry(app: BotApplication, index: number): string {
+  const date = app.createdAt.slice(0, 10);
+  const recipientLine =
+    app.recipient && app.recipient !== "—" ? `\n   👔 ${escHtml(app.recipient)}` : "";
+  return `${index}. ${escHtml(app.occasion)} · ${escHtml(app.gift)}${recipientLine}\n   💰 ${escHtml(app.budget)} · ${escHtml(app.telegram)}\n   📅 ${date}`;
+}
+
+function formatRecent(apps: BotApplication[]): string {
   if (!apps.length) return "Пока нет заявок.";
-  return apps
-    .map((a, i) => {
-      const date = a.createdAt.slice(0, 10);
-      return `${i + 1}. ${escHtml(a.occasion)} · ${escHtml(a.gift)}\n   💰 ${escHtml(a.budget)} · ${escHtml(a.telegram)}\n   ${date}`;
-    })
-    .join("\n\n");
+  return apps.map((a, i) => formatApplicationEntry(a, i + 1)).join("\n\n");
 }
 
 export function formatStatsMessage(stats: BotStats): string {
@@ -155,8 +169,23 @@ export function formatStatsMessage(stats: BotStats): string {
   ].join("\n");
 }
 
+export function formatApplicationsMessage(list: ApplicationsList): string {
+  const periodLabel = list.period === "today" ? "сегодня" : "всего";
+  const pageLabel = list.totalPages > 1 ? `, стр. ${list.page + 1}/${list.totalPages}` : "";
+  const header = `📋 <b>Заявки</b> (${periodLabel}: ${list.total}${pageLabel})`;
+
+  if (!list.items.length) {
+    return `${header}\n\nПока нет заявок.`;
+  }
+
+  const startIndex = list.page * list.pageSize + 1;
+  const body = list.items.map((app, i) => formatApplicationEntry(app, startIndex + i)).join("\n\n");
+  return `${header}\n\n${body}`;
+}
+
 export function adminStatsKeyboard(period: "all" | "today"): InlineKeyboard {
   const kb = new InlineKeyboard();
+  kb.text("📋 Заявки", `admin:apps:${period}:0`).row();
   if (period === "all") {
     kb.text("📅 Сегодня", "admin:stats:today").text("🔄 Обновить", "admin:stats:all");
   } else {
@@ -165,8 +194,31 @@ export function adminStatsKeyboard(period: "all" | "today"): InlineKeyboard {
   return kb;
 }
 
+export function adminApplicationsKeyboard(list: ApplicationsList): InlineKeyboard {
+  const { period, page, totalPages } = list;
+  const kb = new InlineKeyboard();
+
+  if (totalPages > 1) {
+    if (page > 0) kb.text("◀️ Назад", `admin:apps:${period}:${page - 1}`);
+    if (page < totalPages - 1) kb.text("Вперёд ▶️", `admin:apps:${period}:${page + 1}`);
+    if (page > 0 || page < totalPages - 1) kb.row();
+  }
+
+  if (period === "all") {
+    kb.text("📅 Сегодня", "admin:apps:today:0").text("🔄 Обновить", `admin:apps:all:${page}`);
+  } else {
+    kb.text("📊 Всего", "admin:apps:all:0").text("🔄 Обновить", `admin:apps:today:${page}`);
+  }
+  kb.row().text("⬅️ Статистика", `admin:stats:${period}`);
+  return kb;
+}
+
 export async function fetchBotStats(period: "all" | "today"): Promise<BotStats> {
   return adminFetch<BotStats>(`/admin/stats?period=${period}`);
+}
+
+export async function fetchApplications(period: "all" | "today", page = 0): Promise<ApplicationsList> {
+  return adminFetch<ApplicationsList>(`/admin/applications?period=${period}&page=${page}&pageSize=10`);
 }
 
 export async function sendAdminPanel(ctx: Context, period: "all" | "today" = "all"): Promise<void> {
@@ -175,5 +227,43 @@ export async function sendAdminPanel(ctx: Context, period: "all" | "today" = "al
   await ctx.reply(text, {
     parse_mode: "HTML",
     reply_markup: adminStatsKeyboard(period),
+  });
+}
+
+export async function sendApplicationsList(
+  ctx: Context,
+  period: "all" | "today" = "all",
+  page = 0,
+): Promise<void> {
+  const list = await fetchApplications(period, page);
+  const text = formatApplicationsMessage(list);
+  await ctx.reply(text, {
+    parse_mode: "HTML",
+    reply_markup: adminApplicationsKeyboard(list),
+  });
+}
+
+export async function editAdminPanel(
+  ctx: Context,
+  period: "all" | "today",
+): Promise<void> {
+  const stats = await fetchBotStats(period);
+  const text = formatStatsMessage(stats);
+  await ctx.editMessageText(text, {
+    parse_mode: "HTML",
+    reply_markup: adminStatsKeyboard(period),
+  });
+}
+
+export async function editApplicationsList(
+  ctx: Context,
+  period: "all" | "today",
+  page = 0,
+): Promise<void> {
+  const list = await fetchApplications(period, page);
+  const text = formatApplicationsMessage(list);
+  await ctx.editMessageText(text, {
+    parse_mode: "HTML",
+    reply_markup: adminApplicationsKeyboard(list),
   });
 }

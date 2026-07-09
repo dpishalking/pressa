@@ -30,9 +30,7 @@ export function managerHandoffKeyboard(
 export function mainMenuKeyboard(lang: BotLanguage): InlineKeyboard {
   const s = t(lang);
   return new InlineKeyboard()
-    .text(s.menuConsult, "menu:consult")
-    .row()
-    .text(s.menuCatalog, "menu:catalog")
+    .text(s.menuConsultMan, "menu:consult")
     .row()
     .text(s.menuLang, "menu:lang");
 }

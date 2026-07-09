@@ -6,29 +6,29 @@ type ProfileCopy = { description: string; shortDescription: string };
 const PROFILE: Record<BotLanguage, ProfileCopy> = {
   ru: {
     description:
-      "Здравствуйте! Меня зовут Чернилька, я ассистент Retro-Pressa. Помогу подобрать подарок, который по-настоящему удивит вашего близкого человека.\n\nНажмите Start, чтобы начать.",
+      "Здравствуйте! Меня зовут Чернилька, я ассистент Retro-Pressa. Помогу подобрать подарок мужчине — папе, дедушке, мужу, брату, сыну или другому близкому, который по-настоящему удивит.\n\nНажмите Start, чтобы начать.",
     shortDescription:
-      "Чернилька — ассистент Retro-Pressa. Подберу подарок, который удивит вашего близкого.",
+      "Чернилька — ассистент Retro-Pressa. Подберу подарок мужчине: папе, дедушке, мужу, брату.",
   },
   en: {
     description:
-      "Hello! My name is Chernilka, I'm a Retro-Pressa assistant. I'll help you choose a gift that will truly surprise your loved one.\n\nTap Start to begin.",
-    shortDescription: "Chernilka — Retro-Pressa assistant. Gifts that truly surprise your loved one.",
+      "Hello! My name is Chernilka, I'm a Retro-Pressa assistant. I'll help you choose a gift for a man — father, grandfather, husband, brother, son, or another close man who deserves a truly special surprise.\n\nTap Start to begin.",
+    shortDescription: "Chernilka — Retro-Pressa assistant. Gifts for men: dad, grandpa, husband, brother.",
   },
   lv: {
     description:
-      "Sveiki! Mani sauc Černilka, esmu Retro-Pressa asistents. Palīdzēšu izvēlēties dāvanu, kas patiesi pārsteigs jūsu mīļoto cilvēku.\n\nNospiediet Start, lai sāktu.",
-    shortDescription: "Černilka — Retro-Pressa asistents. Dāvanas, kas pārsteigs jūsu mīļoto.",
+      "Sveiki! Mani sauc Černilka, esmu Retro-Pressa asistents. Palīdzēšu izvēlēties dāvanu vīrietim — tēvam, vectēvam, vīram, brālim, dēlam vai citam tuvam cilvēkam.\n\nNospiediet Start, lai sāktu.",
+    shortDescription: "Černilka — Retro-Pressa asistents. Dāvanas vīriešiem: tēvam, vectēvam, viram.",
   },
   et: {
     description:
-      "Tere! Minu nimi on Chernilka, olen Retro-Pressa assistent. Aitan valida kingi, mis tõeliselt üllatab teie lähedast inimest.\n\nAlustamiseks vajutage Start.",
-    shortDescription: "Chernilka — Retro-Pressa assistent. Kingid, mis üllatavad teie lähedast.",
+      "Tere! Minu nimi on Chernilka, olen Retro-Pressa assistent. Aitan valida kingi mehele — isale, vanaisale, abikaasale, vennale, pojale või teisele lähedasele mehele.\n\nAlustamiseks vajutage Start.",
+    shortDescription: "Chernilka — Retro-Pressa assistent. Kingid meestele: isale, vanaisale, abikaasale.",
   },
   lt: {
     description:
-      "Sveiki! Mano vardas Chernilka, esu Retro-Pressa asistentas. Padėsiu parinkti dovaną, kuri tikrai nustebins jūsų artimą žmogų.\n\nPaspauskite Start, kad pradėtumėte.",
-    shortDescription: "Chernilka — Retro-Pressa asistentas. Dovanos, kurios nustebins jūsų artimąjį.",
+      "Sveiki! Mano vardas Chernilka, esu Retro-Pressa asistentas. Padėsiu parinkti dovaną vyrui — tėčiui, seneliui, vyrui, broliui, sūnui ar kitam artimam vyrui.\n\nPaspauskite Start, kad pradėtumėte.",
+    shortDescription: "Chernilka — Retro-Pressa asistentas. Dovanos vyrams: tėčiui, seneliui, vyrui.",
   },
 };
 
