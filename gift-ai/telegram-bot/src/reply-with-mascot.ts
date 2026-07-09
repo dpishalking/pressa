@@ -41,7 +41,7 @@ export async function replyWithPhotoFile(
   await replyWithPhotoFiles(ctx, [photoPath], text, extra, opts);
 }
 
-/** Одно фото или альбом (до 10). Клавиатура уходит отдельным сообщением с текстом, если фото несколько. */
+/** Одно фото или альбом (до 10). У media group нельзя повесить кнопки — они идут отдельным коротким сообщением. */
 export async function replyWithPhotoFiles(
   ctx: Context,
   photoPaths: string[],
@@ -63,7 +63,14 @@ export async function replyWithPhotoFiles(
   const uid = userIdFromCtx(ctx);
   const captionSource = opts?.caption?.trim() || text;
   const captionHtml = smartFormatReply(captionSource, opts).slice(0, CAPTION_LIMIT);
-  const followUp = opts?.followUp?.trim() || text;
+  // Полный ответ уже в подписи альбома — не дублируем. Отдельный followUp (напр. описание в каталоге) оставляем.
+  const explicitFollowUp = opts?.followUp?.trim();
+  const followUp =
+    explicitFollowUp && explicitFollowUp !== captionSource
+      ? explicitFollowUp
+      : extra
+        ? "Выберите действие:"
+        : "";
 
   try {
     await ctx.api.sendChatAction(ctx.chat!.id, "upload_photo");
@@ -82,7 +89,9 @@ export async function replyWithPhotoFiles(
       uid,
       album.map((m) => m.message_id),
     );
-    await sendTextMessage(ctx, followUp, extra, opts);
+    if (followUp) {
+      await sendTextMessage(ctx, followUp, extra, opts);
+    }
   } catch (e) {
     console.error("[photo album send failed]", e);
     await replyWithSinglePhoto(ctx, paths[0]!, text, extra, opts);
