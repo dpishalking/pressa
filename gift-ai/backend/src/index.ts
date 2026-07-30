@@ -8,6 +8,8 @@ import { knowledgeBase } from "./modules/knowledge-base.js";
 import { logger } from "./logger.js";
 import { seedGifts } from "./seed.js";
 import { applyBotCatalogPolicy } from "./modules/catalog-policy.js";
+import { ensureHandoffReminderSchema } from "./modules/handoff-reminders.js";
+import { ensureAdminAlertSchema } from "./modules/handoff-admin-notify.js";
 import { startRopAlertsWorker } from "./integrations/alerts/alert-worker.js";
 import { syncCsoBotWebhook, syncCsoBotCommands } from "./integrations/alerts/cso-bot.js";
 import { initTrainingDb } from "./training/db.js";
@@ -17,6 +19,8 @@ getDb();
 seedGifts();
 applyBotCatalogPolicy();
 initTrainingDb();
+ensureHandoffReminderSchema();
+ensureAdminAlertSchema();
 
 try {
   const scenarios = loadScenariosFromFiles();

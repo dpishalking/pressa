@@ -17,12 +17,14 @@ function hasGiftDirection(fields: QualificationFields): boolean {
   );
 }
 
-/** Короткая воронка: повод → получатель → сроки → бюджет → (рекомендация) → контакты */
+/** Воронка: повод → получатель → сроки → бюджет → эмоция → что дорого → рекомендация → контакты */
 function stageFromFields(fields: QualificationFields): ConsultationStage {
   if (!FILLED(fields.occasion)) return 1;
   if (!FILLED(fields.recipient) && !FILLED(fields.relationship)) return 2;
   if (!FILLED(fields.urgency) && !FILLED(fields.eventDate)) return 3;
   if (!FILLED(fields.budget)) return 4;
+  if (!FILLED(fields.desiredEmotions)) return 5;
+  if (!FILLED(fields.story)) return 6;
   if (!hasGiftDirection(fields)) return 8;
   return 10;
 }
@@ -33,6 +35,8 @@ export function stageLabel(stage: ConsultationStage): string {
     2: "кому из близких мужчин",
     3: "сроки и доставка",
     4: "бюджет",
+    5: "желаемая эмоция",
+    6: "что особенно дорого",
     8: "краткая рекомендация",
     10: "контакты для менеджера",
   };
@@ -50,6 +54,10 @@ export function questionForStage(stage: ConsultationStage, fields: Qualification
       return "📅 К какой дате нужен подарок и в какой город доставлять?";
     case 4:
       return "💰 Какой бюджет закладываете?";
+    case 5:
+      return "✨ Какую эмоцию хотите вызвать у него этим подарком?";
+    case 6:
+      return "💛 Что в нём для вас особенно дорого или ценно?";
     case 8:
       return fields.catalogGiftInterest
         ? "☎️ Нажмите кнопку ниже — откроется чат с менеджером, текст заявки уже будет готов."
@@ -107,6 +115,8 @@ export function buildStageHint(fields: QualificationFields, conversationStage: n
   if (FILLED(fields.recipient) || FILLED(fields.relationship)) done.push("получатель ✓");
   if (FILLED(fields.urgency) || FILLED(fields.eventDate)) done.push("сроки ✓");
   if (FILLED(fields.budget)) done.push("бюджет ✓");
+  if (FILLED(fields.desiredEmotions)) done.push("эмоция ✓");
+  if (FILLED(fields.story)) done.push("что дорого ✓");
   if (hasGiftDirection(fields)) done.push("направление подарка ✓");
 
   const budgetNote =
@@ -114,10 +124,20 @@ export function buildStageHint(fields: QualificationFields, conversationStage: n
       ? "\nБЮДЖЕТ: не предлагай готовые вилки — один короткий вопрос."
       : "";
 
+  const emotionNote =
+    next === 5
+      ? "\nЭМОЦИЯ: один короткий вопрос — удивить, растрогать, вызвать гордость, ностальгию и т.п. Не углубляйся."
+      : "";
+
+  const dearNote =
+    next === 6
+      ? "\nЧТО ДОРОГО: один короткий вопрос про то, что для клиента особенно ценно в этом человеке. Ответ сохрани в story. Не превращай в длинное интервью."
+      : "";
+
   const depthNote =
-    "\nНЕ спрашивай про хобби, истории из жизни, мечты, увлечения — это задаст менеджер. Подарок всегда для мужчины (папа, дедушка, муж, брат, сын, друг). Если клиент сам написал детали — сохрани в comments, но не углубляйся.";
+    "\nНЕ спрашивай про хобби, мечты и длинные истории из жизни сверх этапов 5–6. Подарок всегда для мужчины (папа, дедушка, муж, брат, сын, друг). Если клиент сам написал детали — сохрани в comments/story, но не углубляйся.";
 
   return `Сейчас этап ${next} (${stageLabel(next)}). Уже собрано: ${done.length ? done.join(", ") : "пока мало"}.
 ОБЯЗАТЕЛЬНО задай следующий короткий вопрос по этапу ${next}. Не заканчивай сообщение без вопроса (кроме финала с контактами).
-Подсказка вопроса: «${questionForStage(next, fields)}»${budgetNote}${depthNote}`;
+Подсказка вопроса: «${questionForStage(next, fields)}»${budgetNote}${emotionNote}${dearNote}${depthNote}`;
 }

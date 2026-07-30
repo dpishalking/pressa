@@ -132,6 +132,39 @@ function pickInterests(text: string): Partial<QualificationFields> {
   return patch;
 }
 
+function pickEmotions(text: string): string {
+  const lower = text.toLowerCase().trim();
+  if (!lower || lower.length > 120) return "";
+  if (/^\d|евро|руб|€|₽|москв|риг|питер|спб|минск|\d{1,2}[./]|\d+\s*(январ|феврал|март|апрел|мая|июн|июл|август|сентябр|октябр|ноябр|декабр)/i.test(lower)) {
+    return "";
+  }
+  const rules: [RegExp, string][] = [
+    [/удивит|удивлен|шок/i, "удивить"],
+    [/растрог|тронут|слёз|слез/i, "растрогать"],
+    [/ностальг/i, "ностальгия"],
+    [/горд/i, "гордость"],
+    [/тепло|уют|забот/i, "тепло"],
+    [/смех|юмор|улыб|посмеят/i, "улыбка"],
+    [/благодар|ценност/i, "благодарность"],
+    [/волшеб|маги/i, "волшебство"],
+  ];
+  for (const [re, label] of rules) {
+    if (re.test(lower)) return label;
+  }
+  if (/эмоц|чувств|хочу\s+чтоб|хочу\s+чтобы/i.test(lower)) return text.trim().slice(0, 120);
+  return "";
+}
+
+function pickDearStory(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length < 3 || trimmed.length > 280) return "";
+  if (/^\d|евро|руб|€|₽|москв|риг|питер|спб|\d{1,2}[./]/i.test(trimmed)) return "";
+  if (/дорог|ценн|близ|люблю|уважа|поддержива|всегда\s+был|для\s+меня/i.test(trimmed)) {
+    return trimmed.slice(0, 280);
+  }
+  return "";
+}
+
 /** Достаём пропущенные поля из всей переписки — если Gemini их не сохранил в JSON. */
 export function recoverFieldsFromTranscript(
   messages: ConversationMessage[],
@@ -142,6 +175,7 @@ export function recoverFieldsFromTranscript(
   if (!all.trim()) return {};
 
   const patch: Partial<QualificationFields> = {};
+  const latest = latestUserText?.trim() || "";
 
   if (!FILLED(current.occasion)) {
     const occasion = pickOccasion(all);
@@ -162,7 +196,7 @@ export function recoverFieldsFromTranscript(
     if (age) patch.recipientAge = age;
   }
 
-  const dateSource = latestUserText?.trim() || all;
+  const dateSource = latest || all;
   if (!FILLED(current.eventDate) && !FILLED(current.urgency)) {
     const eventDate = pickEventDate(dateSource);
     if (eventDate) patch.eventDate = eventDate;
@@ -174,7 +208,7 @@ export function recoverFieldsFromTranscript(
   }
 
   if (!FILLED(current.budget)) {
-    const budget = pickBudget(latestUserText?.trim() || all);
+    const budget = pickBudget(latest || all);
     if (budget) patch.budget = budget;
   }
 
@@ -185,11 +219,27 @@ export function recoverFieldsFromTranscript(
     patch.recipientGender = "мужчина";
   }
 
+  if (!FILLED(current.desiredEmotions) && FILLED(current.budget) && latest) {
+    const emotion = pickEmotions(latest);
+    if (emotion) patch.desiredEmotions = emotion;
+  }
+
+  if (
+    !FILLED(current.story) &&
+    (FILLED(current.desiredEmotions) || FILLED(patch.desiredEmotions ?? "")) &&
+    latest
+  ) {
+    const dear = pickDearStory(latest);
+    if (dear && dear !== (patch.desiredEmotions || current.desiredEmotions)) {
+      patch.story = dear;
+    }
+  }
+
   if (!FILLED(current.interests) || !FILLED(current.hobbies)) {
-    const interests = pickInterests(latestUserText?.trim() || all);
+    const interests = pickInterests(latest || all);
     if (!FILLED(current.interests) && interests.interests) patch.interests = interests.interests;
     if (!FILLED(current.hobbies) && interests.hobbies) patch.hobbies = interests.hobbies;
-    if (!FILLED(current.story) && interests.story) patch.story = interests.story;
+    if (!FILLED(current.story) && !patch.story && interests.story) patch.story = interests.story;
   }
 
   return patch;

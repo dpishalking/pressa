@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getDb } from "../db/client.js";
+import { formatTelegramContact } from "./telegram-contact.js";
 
 export type AnalyticsEventType =
   | "bot_start"
@@ -17,6 +18,7 @@ export type BotApplication = {
   gift: string;
   budget: string;
   telegram: string;
+  crmLead: boolean;
   status: string;
   createdAt: string;
 };
@@ -30,6 +32,7 @@ export type BotStats = {
   userMessages: number;
   applicationsReady: number;
   managerClicks: number;
+  managerContacts: number;
   leadsStored: number;
   crmLeads: number;
   activeConsultations: number;
@@ -104,6 +107,7 @@ function mapApplicationRow(r: {
   channel_user_id: string;
   fields_json: string;
   status: string;
+  bitrix_lead_id: string | null;
   created_at: string;
 }): BotApplication {
   let fields: Record<string, string> = {};
@@ -122,7 +126,12 @@ function mapApplicationRow(r: {
     recipient: recipientParts || "—",
     gift: fields.recommendedGiftName ?? fields.catalogGiftInterest ?? "—",
     budget: fields.budget ?? "—",
-    telegram: fields.telegram ?? "—",
+    telegram:
+      formatTelegramContact({
+        telegram: fields.telegram,
+        channelUserId: r.channel_user_id,
+      }) || "—",
+    crmLead: Boolean(r.bitrix_lead_id?.trim()),
     status: r.status,
     createdAt: r.created_at,
   };
@@ -151,7 +160,7 @@ export function listApplications(opts: {
 
   const rows = db
     .prepare(
-      `SELECT id, channel_user_id, fields_json, status, created_at
+      `SELECT id, channel_user_id, fields_json, status, bitrix_lead_id, created_at
        FROM conversations
        WHERE status IN ('handoff', 'completed')${pConv}
        ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
@@ -161,6 +170,7 @@ export function listApplications(opts: {
     channel_user_id: string;
     fields_json: string;
     status: string;
+    bitrix_lead_id: string | null;
     created_at: string;
   }>;
 
@@ -230,6 +240,7 @@ export function getBotStats(period: "all" | "today" = "all"): BotStats {
   const consultStarts = Math.max(countEvent("consult_begin"), consultStartsFromDb);
   const handoffShown = Math.max(countEvent("handoff_shown"), applicationsReady);
   const managerClicks = countEvent("manager_click");
+  const managerContacts = crmLeads;
 
   const funnelVisitors = Math.max(uniqueVisitors, distinctUsers);
   const funnelConsult = countQuery(
@@ -263,7 +274,7 @@ export function getBotStats(period: "all" | "today" = "all"): BotStats {
 
   const recentRows = db
     .prepare(
-      `SELECT id, channel_user_id, fields_json, status, created_at
+      `SELECT id, channel_user_id, fields_json, status, bitrix_lead_id, created_at
        FROM conversations
        WHERE status IN ('handoff', 'completed')${pConv}
        ORDER BY updated_at DESC LIMIT 5`,
@@ -273,6 +284,7 @@ export function getBotStats(period: "all" | "today" = "all"): BotStats {
     channel_user_id: string;
     fields_json: string;
     status: string;
+    bitrix_lead_id: string | null;
     created_at: string;
   }>;
 
@@ -285,6 +297,7 @@ export function getBotStats(period: "all" | "today" = "all"): BotStats {
     userMessages: Math.max(countEvent("user_message"), userMessagesFromDb),
     applicationsReady,
     managerClicks,
+    managerContacts,
     leadsStored,
     crmLeads,
     activeConsultations,
@@ -294,10 +307,10 @@ export function getBotStats(period: "all" | "today" = "all"): BotStats {
       visitors: funnelVisitors,
       consult: funnelConsult,
       handoff: funnelHandoff,
-      managerClick: managerClicks,
+      managerClick: managerContacts,
       consultRate: rate(funnelConsult, funnelVisitors),
       handoffRate: rate(funnelHandoff, funnelConsult),
-      clickRate: rate(managerClicks, funnelHandoff),
+      clickRate: rate(managerContacts, funnelHandoff),
     },
     topOccasions: occasionRows.map((r) => [r.occasion, r.n]),
     topGifts: giftRows.map((r) => [r.gift, r.n]),

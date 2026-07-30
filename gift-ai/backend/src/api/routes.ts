@@ -13,6 +13,17 @@ import { transcribeAudioBase64 } from "../integrations/ai/transcribe.js";
 import { seedGifts } from "../seed.js";
 import { applyBotCatalogPolicy } from "../modules/catalog-policy.js";
 import { getBotStats, listApplications, recordAnalyticsEvent, type AnalyticsEventType } from "../modules/analytics.js";
+import {
+  cancelHandoffReminders,
+  ensureHandoffReminderSchema,
+  listDueHandoffReminders,
+  markHandoffReminderSent,
+} from "../modules/handoff-reminders.js";
+import {
+  ensureAdminAlertSchema,
+  listPendingAdminAlerts,
+  markAdminAlertSent,
+} from "../modules/handoff-admin-notify.js";
 import { getDb } from "../db/client.js";
 import { parseBitrixWebhookBody } from "../integrations/alerts/bitrix-webhook-parse.js";
 import { resolveTelegramChatIds, ropAlertsConfig, ropAlertsEnabled } from "../integrations/alerts/alerts-config.js";
@@ -370,6 +381,20 @@ admin.get("/applications", (c) => {
   return c.json(listApplications({ period, page, pageSize }));
 });
 
+admin.post("/leads/push-crm", async (c) => {
+  try {
+    const body = (await c.req.json<{ conversationId?: string; limit?: number }>().catch(() => ({}))) as {
+      conversationId?: string;
+      limit?: number;
+    };
+    const result = await chatEngine.pushPendingLeadsToCrm(body);
+    return c.json({ ok: true, ...result });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return c.json({ error: msg }, 500);
+  }
+});
+
 admin.post("/events", async (c) => {
   const body = await c.req.json<{
     channel: string;
@@ -382,6 +407,34 @@ admin.post("/events", async (c) => {
     return c.json({ error: "channel, channelUserId and eventType required" }, 400);
   }
   recordAnalyticsEvent(body);
+  if (body.eventType === "manager_click") {
+    if (body.conversationId) cancelHandoffReminders({ conversationId: body.conversationId });
+    cancelHandoffReminders({ channel: body.channel, channelUserId: body.channelUserId });
+  }
+  return c.json({ ok: true });
+});
+
+admin.get("/handoff-reminders/due", (c) => {
+  ensureHandoffReminderSchema();
+  const limit = Number(c.req.query("limit") ?? 20);
+  return c.json({ items: listDueHandoffReminders(limit) });
+});
+
+admin.post("/handoff-reminders/:id/sent", async (c) => {
+  const id = c.req.param("id");
+  markHandoffReminderSent(id);
+  return c.json({ ok: true });
+});
+
+admin.get("/admin-alerts/pending", (c) => {
+  ensureAdminAlertSchema();
+  const limit = Number(c.req.query("limit") ?? 20);
+  return c.json({ items: listPendingAdminAlerts(limit) });
+});
+
+admin.post("/admin-alerts/:id/sent", async (c) => {
+  const id = c.req.param("id");
+  markAdminAlertSent(id);
   return c.json({ ok: true });
 });
 

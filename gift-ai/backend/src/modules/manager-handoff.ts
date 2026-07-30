@@ -53,6 +53,8 @@ const LABELS: Record<BotLanguage, Record<string, string>> = {
     date: "📅 Нужен к",
     city: "📍 Город доставки",
     budget: "💰 Бюджет",
+    emotions: "✨ Эмоция",
+    dear: "💛 Особенно дорого",
     telegram: "💬 Мой Telegram",
     fallbackGift: "👋 Здравствуйте! Хочу заказать",
     button: "✉️ Написать менеджеру",
@@ -64,6 +66,8 @@ const LABELS: Record<BotLanguage, Record<string, string>> = {
     date: "📅 Needed by",
     city: "📍 Delivery city",
     budget: "💰 Budget",
+    emotions: "✨ Desired emotion",
+    dear: "💛 Especially dear",
     telegram: "💬 My Telegram",
     fallbackGift: "👋 Hello! I'd like to order",
     button: "✉️ Message our manager",
@@ -75,6 +79,8 @@ const LABELS: Record<BotLanguage, Record<string, string>> = {
     date: "📅 Vajag līdz",
     city: "📍 Piegādes pilsēta",
     budget: "💰 Budžets",
+    emotions: "✨ Emocija",
+    dear: "💛 Īpaši svarīgi",
     telegram: "💬 Mans Telegram",
     fallbackGift: "👋 Sveiki! Vēlos pasūtīt",
     button: "✉️ Rakstīt menedžerim",
@@ -86,6 +92,8 @@ const LABELS: Record<BotLanguage, Record<string, string>> = {
     date: "📅 Vaja kuupäevaks",
     city: "📍 Tarne linn",
     budget: "💰 Eelarve",
+    emotions: "✨ Emotsioon",
+    dear: "💛 Eriti kallis",
     telegram: "💬 Minu Telegram",
     fallbackGift: "👋 Tere! Soovin tellida",
     button: "✉️ Kirjuta haldurile",
@@ -97,6 +105,8 @@ const LABELS: Record<BotLanguage, Record<string, string>> = {
     date: "📅 Reikia iki",
     city: "📍 Pristatymo miestas",
     budget: "💰 Biudžetas",
+    emotions: "✨ Emocija",
+    dear: "💛 Ypač brangu",
     telegram: "💬 Mano Telegram",
     fallbackGift: "👋 Sveiki! Noriu užsakyti",
     button: "✉️ Rašyti vadybininkui",
@@ -176,6 +186,8 @@ export function buildManagerDraftMessage(fields: QualificationFields, lang: BotL
     line(L.date, fields.eventDate || fields.urgency),
     line(L.city, fields.city || fields.country),
     line(L.budget, fields.budget),
+    line(L.emotions, fields.desiredEmotions),
+    line(L.dear, fields.story),
     line(L.telegram, fields.telegram),
   ].filter(Boolean) as string[];
 
@@ -202,7 +214,15 @@ export function hasHandoffBasics(fields: QualificationFields): boolean {
       fields.recommendedGiftId?.trim() ||
       fields.catalogGiftInterest?.trim(),
   );
-  return Boolean(fields.occasion?.trim() && hasRecipient && fields.budget?.trim() && hasTiming && hasGift);
+  return Boolean(
+    fields.occasion?.trim() &&
+      hasRecipient &&
+      fields.budget?.trim() &&
+      hasTiming &&
+      fields.desiredEmotions?.trim() &&
+      fields.story?.trim() &&
+      hasGift,
+  );
 }
 
 /** Убирает просьбу оставить телефон из ответа модели перед handoff. */

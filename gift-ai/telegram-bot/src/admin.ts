@@ -26,6 +26,7 @@ export type BotApplication = {
   gift: string;
   budget: string;
   telegram: string;
+  crmLead: boolean;
   status: string;
   createdAt: string;
 };
@@ -39,6 +40,7 @@ export type BotStats = {
   userMessages: number;
   applicationsReady: number;
   managerClicks: number;
+  managerContacts: number;
   leadsStored: number;
   crmLeads: number;
   activeConsultations: number;
@@ -126,7 +128,8 @@ function formatApplicationEntry(app: BotApplication, index: number): string {
   const date = app.createdAt.slice(0, 10);
   const recipientLine =
     app.recipient && app.recipient !== "—" ? `\n   👔 ${escHtml(app.recipient)}` : "";
-  return `${index}. ${escHtml(app.occasion)} · ${escHtml(app.gift)}${recipientLine}\n   💰 ${escHtml(app.budget)} · ${escHtml(app.telegram)}\n   📅 ${date}`;
+  const crmLine = app.crmLead ? "✅ лид в CRM" : "⏳ лид создаётся";
+  return `${index}. ${escHtml(app.occasion)} · ${escHtml(app.gift)}${recipientLine}\n   💰 ${escHtml(app.budget)} · ${escHtml(app.telegram)}\n   📤 ${crmLine}\n   📅 ${date}`;
 }
 
 function formatRecent(apps: BotApplication[]): string {
@@ -145,9 +148,10 @@ export function formatStatsMessage(stats: BotStats): string {
     `📋 Открыли каталог: <b>${stats.catalogOpens}</b>`,
     `💬 Сообщений от клиентов: <b>${stats.userMessages}</b>`,
     "",
-    `📝 Заявки готовы: <b>${stats.applicationsReady}</b>`,
-    `✉️ Нажали «Менеджеру»: <b>${stats.managerClicks}</b>`,
-    `📤 Лиды сохранены: <b>${stats.leadsStored}</b> (CRM: ${stats.crmLeads})`,
+    `📝 Интерес (опрос до конца): <b>${stats.applicationsReady}</b>`,
+    `✉️ Открыли чат менеджера: <b>${stats.managerClicks}</b>`,
+    `📤 Лиды в Bitrix: <b>${stats.managerContacts}</b>`,
+    `💾 Лиды сохранены: <b>${stats.leadsStored}</b> (CRM: ${stats.crmLeads})`,
     "",
     `🟢 Активных диалогов: <b>${stats.activeConsultations}</b>`,
     `⏸ Брошено: <b>${stats.abandoned}</b>`,
@@ -155,8 +159,8 @@ export function formatStatsMessage(stats: BotStats): string {
     "",
     "<b>Воронка</b>",
     `зашли → подбор: <b>${stats.funnel.consultRate}%</b> (${stats.funnel.consult}/${stats.funnel.visitors})`,
-    `подбор → заявка: <b>${stats.funnel.handoffRate}%</b> (${stats.funnel.handoff}/${stats.funnel.consult})`,
-    `заявка → менеджер: <b>${stats.funnel.clickRate}%</b> (${stats.funnel.managerClick}/${stats.funnel.handoff})`,
+    `подбор → интерес: <b>${stats.funnel.handoffRate}%</b> (${stats.funnel.handoff}/${stats.funnel.consult})`,
+    `интерес → Bitrix: <b>${stats.funnel.clickRate}%</b> (${stats.funnel.managerClick}/${stats.funnel.handoff})`,
     "",
     "<b>Топ поводов</b>",
     formatTopList(stats.topOccasions),
@@ -164,7 +168,7 @@ export function formatStatsMessage(stats: BotStats): string {
     "<b>Топ подарков</b>",
     formatTopList(stats.topGifts),
     "",
-    "<b>Последние заявки</b>",
+    "<b>Последний интерес</b>",
     formatRecent(stats.recentApplications),
   ].join("\n");
 }
@@ -172,10 +176,10 @@ export function formatStatsMessage(stats: BotStats): string {
 export function formatApplicationsMessage(list: ApplicationsList): string {
   const periodLabel = list.period === "today" ? "сегодня" : "всего";
   const pageLabel = list.totalPages > 1 ? `, стр. ${list.page + 1}/${list.totalPages}` : "";
-  const header = `📋 <b>Заявки</b> (${periodLabel}: ${list.total}${pageLabel})`;
+  const header = `📋 <b>Интерес</b> (${periodLabel}: ${list.total}${pageLabel})`;
 
   if (!list.items.length) {
-    return `${header}\n\nПока нет заявок.`;
+    return `${header}\n\nПока нет завершённых опросов.`;
   }
 
   const startIndex = list.page * list.pageSize + 1;
@@ -185,7 +189,7 @@ export function formatApplicationsMessage(list: ApplicationsList): string {
 
 export function adminStatsKeyboard(period: "all" | "today"): InlineKeyboard {
   const kb = new InlineKeyboard();
-  kb.text("📋 Заявки", `admin:apps:${period}:0`).row();
+  kb.text("📋 Интерес", `admin:apps:${period}:0`).row();
   if (period === "all") {
     kb.text("📅 Сегодня", "admin:stats:today").text("🔄 Обновить", "admin:stats:all");
   } else {

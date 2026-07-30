@@ -6,12 +6,12 @@ import { t } from "./i18n.js";
 
 export function handoffActionsKeyboard(
   buttonLabel: string,
-  handoffUrl: string,
+  _handoffUrl: string,
   lang: BotLanguage,
 ): InlineKeyboard {
   const s = t(lang);
   return new InlineKeyboard()
-    .url(buttonLabel, handoffUrl)
+    .text(buttonLabel, "handoff:open")
     .row()
     .text(s.catalogChooseAnother, "consult:catalog")
     .row()

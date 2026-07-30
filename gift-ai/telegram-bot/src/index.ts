@@ -27,9 +27,45 @@ import {
   sendApplicationsList,
   adminConfigured,
 } from "./admin.js";
+import {
+  fetchDueHandoffReminders,
+  markHandoffReminderSent,
+  reminderHandoffKeyboard,
+} from "./handoff-reminders.js";
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const API_URL = (process.env.API_URL ?? "http://localhost:3100").replace(/\/$/, "");
+const ADMIN_API_KEY = process.env.ADMIN_API_KEY ?? "";
+
+function parseAdminChatIds(raw: string): string[] {
+  return raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().replace(/^@/, ""))
+    .filter((s) => /^-?\d+$/.test(s));
+}
+
+const ADMIN_CHAT_IDS = parseAdminChatIds(process.env.ADMIN_TELEGRAM_IDS ?? "");
+
+async function fetchPendingAdminAlerts(limit = 20): Promise<Array<{ id: string; text: string }>> {
+  if (!ADMIN_API_KEY) return [];
+  const res = await fetch(`${API_URL}/admin/admin-alerts/pending?limit=${limit}`, {
+    headers: { "x-admin-key": ADMIN_API_KEY },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) throw new Error(`admin-alerts ${res.status}`);
+  const data = (await res.json()) as { items?: Array<{ id: string; text: string }> };
+  return data.items ?? [];
+}
+
+async function markAdminAlertSent(id: string): Promise<void> {
+  if (!ADMIN_API_KEY) return;
+  await fetch(`${API_URL}/admin/admin-alerts/${encodeURIComponent(id)}/sent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-admin-key": ADMIN_API_KEY },
+    body: "{}",
+    signal: AbortSignal.timeout(15_000),
+  });
+}
 
 if (!BOT_TOKEN) {
   console.error("BOT_TOKEN is required");
@@ -500,7 +536,6 @@ bot.on("callback_query:data", async (ctx) => {
 
     if (data === "handoff:open") {
       const url = session.pendingHandoffUrl;
-      const label = session.pendingHandoffButtonLabel ?? "✉️ Написать менеджеру";
       if (!url) {
         await ctx.answerCallbackQuery({ text: "Ссылка устарела — нажмите /start" });
         return;
@@ -511,12 +546,7 @@ bot.on("callback_query:data", async (ctx) => {
         eventType: "manager_click",
         conversationId: session.pendingHandoffConversationId,
       });
-      await ctx.answerCallbackQuery();
-      const msg = await ctx.reply(
-        "☎️ Нажмите кнопку ниже — откроется чат с менеджером, текст заявки уже будет готов.",
-        { reply_markup: new InlineKeyboard().url(label, url) },
-      );
-      trackBotMessage(uid, msg.message_id);
+      await ctx.answerCallbackQuery({ url });
       return;
     }
 
@@ -674,6 +704,68 @@ bot.catch((err) => {
 
 await bot.api.deleteWebhook().catch(() => {});
 
+let reminderTickRunning = false;
+
+async function processAdminAlerts(): Promise<void> {
+  if (!adminConfigured() || !ADMIN_CHAT_IDS.length) return;
+  try {
+    const pending = await fetchPendingAdminAlerts(20);
+    for (const item of pending) {
+      let delivered = false;
+      for (const chatId of ADMIN_CHAT_IDS) {
+        try {
+          await bot.api.sendMessage(chatId, item.text, { link_preview_options: { is_disabled: true } });
+          delivered = true;
+        } catch (e) {
+          console.warn("[admin-alert] send failed", chatId, e instanceof Error ? e.message : e);
+        }
+      }
+      if (delivered) await markAdminAlertSent(item.id);
+    }
+  } catch (e) {
+    console.warn("[admin-alert] tick failed", e instanceof Error ? e.message : e);
+  }
+}
+
+async function processHandoffReminders(): Promise<void> {
+  if (reminderTickRunning || !adminConfigured()) return;
+  reminderTickRunning = true;
+  try {
+    await processAdminAlerts();
+    const due = await fetchDueHandoffReminders(20);
+    for (const item of due) {
+      if (item.channel !== "telegram" || !item.channelUserId || !item.handoffUrl) {
+        await markHandoffReminderSent(item.id);
+        continue;
+      }
+      try {
+        setSession(item.channelUserId, {
+          pendingHandoffUrl: item.handoffUrl,
+          pendingHandoffButtonLabel: item.buttonLabel,
+          pendingHandoffConversationId: item.conversationId,
+        });
+        await bot.api.sendMessage(item.channelUserId, item.text, {
+          reply_markup: reminderHandoffKeyboard(item.buttonLabel, item.handoffUrl),
+        });
+        await markHandoffReminderSent(item.id);
+        console.log("[handoff-reminder] sent", item.channelUserId, `step=${item.step}`);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/403|bot was blocked|chat not found|user is deactivated/i.test(msg)) {
+          await markHandoffReminderSent(item.id);
+          console.warn("[handoff-reminder] skip blocked/missing chat", item.channelUserId);
+          continue;
+        }
+        console.warn("[handoff-reminder] send failed", item.id, msg);
+      }
+    }
+  } catch (e) {
+    console.warn("[handoff-reminder] tick failed", e instanceof Error ? e.message : e);
+  } finally {
+    reminderTickRunning = false;
+  }
+}
+
 bot.start({
   onStart: async (botInfo) => {
     logMascotInventory();
@@ -690,5 +782,10 @@ bot.start({
     if (adminConfigured() && !process.env.ADMIN_API_KEY) {
       console.warn("⚠️  ADMIN_TELEGRAM_IDS задан, но ADMIN_API_KEY нет — /admin и аналитика с бота не работают");
     }
+    setInterval(() => {
+      void processHandoffReminders();
+    }, 60_000);
+    void processHandoffReminders();
+    console.log("✅ Handoff reminder poller started (every 60s)");
   },
 });

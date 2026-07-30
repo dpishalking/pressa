@@ -2,14 +2,30 @@ import { config } from "../../config.js";
 import { logger } from "../../logger.js";
 import type { LeadPayload } from "../../types/index.js";
 import { bandLabel } from "../../modules/lead-scoring.js";
+import { formatTelegramContact } from "../../modules/telegram-contact.js";
 import { bitrixCall } from "./bitrix-client.js";
 import type { CrmAdapter, CrmLeadResult } from "./types.js";
+
+function telegramParts(payload: LeadPayload): { contact: string; username: string; telegramId: string } {
+  const contact = formatTelegramContact({
+    telegram: payload.telegram,
+    channelUserId: payload.channelUserId,
+  });
+  const username = contact.startsWith("@") ? contact.slice(1) : "";
+  const telegramId = contact.startsWith("id:")
+    ? contact.slice(3)
+    : /^\d+$/.test(payload.channelUserId ?? "")
+      ? payload.channelUserId
+      : "";
+  return { contact, username, telegramId };
+}
 
 export class Bitrix24Adapter implements CrmAdapter {
   readonly name = "bitrix24";
 
   async createLead(payload: LeadPayload): Promise<CrmLeadResult> {
     try {
+      const { contact, username, telegramId } = telegramParts(payload);
       const title = `AI подбор: ${payload.recommendedGiftName || payload.occasion || "подарок"}`;
       const comments = [
         `=== AI SUMMARY ===`,
@@ -28,31 +44,45 @@ export class Bitrix24Adapter implements CrmAdapter {
         `Город: ${payload.city}, ${payload.country}`,
         `Бюджет: ${payload.budget}`,
         `Эмоции: ${payload.desiredEmotions}`,
+        `Особенно дорого: ${payload.story}`,
         `Интересы: ${payload.interests}`,
         `Хобби: ${payload.hobbies}`,
         `Срочность: ${payload.urgency}`,
+        `Telegram: ${contact || "—"}`,
         `Lead Score: ${payload.leadScore} — ${bandLabel(payload.leadScoreBand)}`,
         ``,
         `=== ПЕРЕПИСКА ===`,
         payload.fullTranscript,
       ].join("\n");
 
-      const result = await bitrixCall("crm.lead.add", {
-        fields: {
-          TITLE: title,
-          NAME: payload.clientName || "Клиент",
-          PHONE: payload.phone ? [{ VALUE: payload.phone, VALUE_TYPE: "WORK" }] : [],
-          EMAIL: payload.email ? [{ VALUE: payload.email, VALUE_TYPE: "WORK" }] : [],
-          SOURCE_ID: "WEB",
-          SOURCE_DESCRIPTION: `Telegram: ${payload.telegram || payload.channelUserId}`,
-          COMMENTS: comments.slice(0, 65000),
-          UF_CRM_LEAD_SCORE: String(payload.leadScore),
-        },
-      });
+      const fields: Record<string, unknown> = {
+        TITLE: title,
+        NAME: payload.clientName || "Клиент",
+        PHONE: payload.phone ? [{ VALUE: payload.phone, VALUE_TYPE: "WORK" }] : [],
+        EMAIL: payload.email ? [{ VALUE: payload.email, VALUE_TYPE: "WORK" }] : [],
+        SOURCE_ID: "WEB",
+        SOURCE_DESCRIPTION: `Telegram: ${contact || payload.channelUserId || "—"}`,
+        COMMENTS: comments.slice(0, 65000),
+      };
+
+      // Wazzup / Open Lines custom fields — ignore if portal has no such UF.
+      if (username) fields.UF_CRM_TELEGRAMUSERNAME_WZ = username;
+      if (telegramId) fields.UF_CRM_TELEGRAMID_WZ = telegramId;
+
+      let result: Record<string, unknown>;
+      try {
+        result = await bitrixCall("crm.lead.add", { fields });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (!/UF_CRM_TELEGRAM/i.test(msg)) throw e;
+        delete fields.UF_CRM_TELEGRAMUSERNAME_WZ;
+        delete fields.UF_CRM_TELEGRAMID_WZ;
+        result = await bitrixCall("crm.lead.add", { fields });
+      }
 
       const leadId = String((result.result as number | string) ?? "");
 
-      if (leadId) {
+      if (leadId && config.BITRIX24_TAG) {
         try {
           await bitrixCall("crm.lead.update", {
             id: leadId,
@@ -63,7 +93,7 @@ export class Bitrix24Adapter implements CrmAdapter {
         }
       }
 
-      logger.info("Bitrix lead created", { leadId });
+      logger.info("Bitrix lead created", { leadId, telegram: contact });
       return { success: true, leadId };
     } catch (e) {
       const error = e instanceof Error ? e.message : String(e);

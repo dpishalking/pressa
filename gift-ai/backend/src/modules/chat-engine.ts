@@ -26,7 +26,23 @@ import type { BotLanguage } from "./languages.js";
 import { isRepeatRequest } from "./stage-guide.js";
 import { summaryGenerator } from "./summary-generator.js";
 import { recordAnalyticsEvent } from "./analytics.js";
+import { formatTelegramContact } from "./telegram-contact.js";
+import { cancelHandoffReminders, scheduleHandoffReminders } from "./handoff-reminders.js";
+import { enqueueHandoffAdminAlert } from "./handoff-admin-notify.js";
 import type { Conversation, LeadPayload, QualificationFields } from "../types/index.js";
+
+function withTelegramContact(
+  fields: QualificationFields,
+  channelUserId: string,
+  telegramUsername?: string,
+): QualificationFields {
+  const telegram = formatTelegramContact({
+    username: telegramUsername,
+    telegram: fields.telegram,
+    channelUserId,
+  });
+  return telegram ? { ...fields, telegram } : fields;
+}
 
 function formatPriceLabel(min: number, max: number, lang: BotLanguage = "ru"): string {
   if (!min && !max) return PRICE_ON_REQUEST[lang];
@@ -37,10 +53,10 @@ function formatPriceLabel(min: number, max: number, lang: BotLanguage = "ru"): s
 export class ChatEngine {
   resetMenu(channel: string, channelUserId: string, telegramUsername?: string): { conversationId: string } {
     const conv = conversationMemory.reset(channel, channelUserId);
-    if (telegramUsername) {
-      conversationMemory.update(conv.id, {
-        fields: { ...conv.fields, telegram: `@${telegramUsername.replace(/^@/, "")}` },
-      });
+    cancelHandoffReminders({ channel, channelUserId });
+    const fields = withTelegramContact(conv.fields, channelUserId, telegramUsername);
+    if (fields.telegram !== conv.fields.telegram) {
+      conversationMemory.update(conv.id, { fields });
     }
     recordAnalyticsEvent({
       channel,
@@ -61,6 +77,7 @@ export class ChatEngine {
   }): { reply: string; conversationId: string; stage: number } {
     const language = normalizeLanguage(opts.language);
     const conv = conversationMemory.reset(opts.channel, opts.channelUserId);
+    cancelHandoffReminders({ channel: opts.channel, channelUserId: opts.channelUserId });
 
     const gifts = knowledgeBase.listGifts();
     const catalogGift = opts.catalogGiftExternalId
@@ -74,11 +91,13 @@ export class ChatEngine {
       comments: catalogGift ? `Выбрал из каталога: ${catalogGift.name}` : "",
     };
 
-    if (opts.telegramUsername) {
-      fields.telegram = `@${opts.telegramUsername.replace(/^@/, "")}`;
-    }
-
-    conversationMemory.update(conv.id, { fields: qualificationEngine.mergeFields(conv.fields, fields) });
+    conversationMemory.update(conv.id, {
+      fields: withTelegramContact(
+        qualificationEngine.mergeFields(conv.fields, fields),
+        opts.channelUserId,
+        opts.telegramUsername,
+      ),
+    });
 
     const reply = buildGreeting(language, catalogGift?.name, opts.giftForMan);
     conversationMemory.addMessage(conv.id, "assistant", reply);
@@ -178,9 +197,7 @@ export class ChatEngine {
       comments: [conv.fields.comments, `Сменил выбор на: ${displayName}`].filter(Boolean).join("; "),
     });
 
-    if (telegramUsername && !fields.telegram) {
-      fields = { ...fields, telegram: `@${telegramUsername.replace(/^@/, "")}` };
-    }
+    fields = withTelegramContact(fields, channelUserId, telegramUsername);
 
     if (!hasHandoffBasics(fields)) {
       throw new Error("Сначала завершите короткий опрос — не хватает данных заявки");
@@ -200,6 +217,18 @@ export class ChatEngine {
       status: "handoff",
     });
     conversationMemory.addMessage(conv.id, "assistant", reply);
+
+    // CRM auto-create disabled: push client to manager button; notify admins instead.
+    scheduleHandoffReminders({
+      conversationId: conv.id,
+      channel,
+      channelUserId,
+      handoffUrl: managerHandoff.url,
+      buttonLabel: managerHandoff.buttonLabel,
+      language: lang,
+      fields,
+    });
+    void enqueueHandoffAdminAlert({ channelUserId, fields });
 
     recordAnalyticsEvent({
       channel,
@@ -289,10 +318,9 @@ export class ChatEngine {
       };
     }
 
-    if (telegramUsername && !conv.fields.telegram) {
-      conv = conversationMemory.update(conv.id, {
-        fields: { ...conv.fields, telegram: `@${telegramUsername.replace(/^@/, "")}` },
-      })!;
+    const nextFields = withTelegramContact(conv.fields, channelUserId, telegramUsername);
+    if (nextFields.telegram !== conv.fields.telegram) {
+      conv = conversationMemory.update(conv.id, { fields: nextFields })!;
     }
 
     conversationMemory.addMessage(conv.id, "user", text);
@@ -345,7 +373,11 @@ export class ChatEngine {
     });
 
     const gifts = knowledgeBase.listGifts();
-    const readyForRecommendation = engine.stage >= 8 || Boolean(mergedFields.catalogGiftInterest && engine.stage >= 4);
+    const basicsForRecommend =
+      Boolean(mergedFields.desiredEmotions?.trim()) && Boolean(mergedFields.story?.trim());
+    const readyForRecommendation =
+      basicsForRecommend &&
+      (engine.stage >= 8 || Boolean(mergedFields.catalogGiftInterest && engine.stage >= 6));
     const matched = readyForRecommendation
       ? recommendationEngine.match(gifts, mergedFields, engine.recommendedGiftIds)
       : [];
@@ -402,10 +434,18 @@ export class ChatEngine {
     const summary = conv.summary;
     const bitrixLeadId = conv.bitrixLeadId;
 
-    if (managerHandoff && !conv.bitrixLeadId) {
-      const transcript = conversationMemory.formatTranscript(conv.id);
-      const payload = this.buildLeadPayload(conv, mergedFields, leadScore, leadScoreBand, transcript, summary);
-      this.finalizeLeadAsync(conv.id, payload);
+    if (managerHandoff) {
+      // CRM auto-create disabled — only reminders + admin notify.
+      scheduleHandoffReminders({
+        conversationId: conv.id,
+        channel,
+        channelUserId,
+        handoffUrl: managerHandoff.url,
+        buttonLabel: managerHandoff.buttonLabel,
+        language: lang,
+        fields: mergedFields,
+      });
+      void enqueueHandoffAdminAlert({ channelUserId, fields: mergedFields });
     }
 
     if (isComplete) {
@@ -463,6 +503,100 @@ export class ChatEngine {
     return null;
   }
 
+  /** Дозаливает в CRM заявки, которые дошли до handoff, но bitrix_lead_id пустой. */
+  async pushPendingLeadsToCrm(opts?: { conversationId?: string; limit?: number }): Promise<{
+    crmProvider: string;
+    attempted: number;
+    pushed: number;
+    skipped: number;
+    errors: Array<{ conversationId: string; error: string }>;
+  }> {
+    const db = getDb();
+    const limit = Math.min(50, Math.max(1, opts?.limit ?? 20));
+    const rows = opts?.conversationId
+      ? (db
+          .prepare(
+            `SELECT id FROM conversations
+             WHERE id = ?
+               AND status IN ('handoff', 'completed')
+               AND (bitrix_lead_id IS NULL OR bitrix_lead_id = '')`,
+          )
+          .all(opts.conversationId) as Array<{ id: string }>)
+      : (db
+          .prepare(
+            `SELECT id FROM conversations
+             WHERE status IN ('handoff', 'completed')
+               AND (bitrix_lead_id IS NULL OR bitrix_lead_id = '')
+             ORDER BY updated_at DESC
+             LIMIT ?`,
+          )
+          .all(limit) as Array<{ id: string }>);
+
+    let pushed = 0;
+    let skipped = 0;
+    const errors: Array<{ conversationId: string; error: string }> = [];
+
+    for (const row of rows) {
+      const conv = conversationMemory.getById(row.id);
+      if (!conv || !hasHandoffBasics(conv.fields)) {
+        skipped += 1;
+        continue;
+      }
+      try {
+        const result = await this.finalizeLeadNow(row.id);
+        if (result.leadId) pushed += 1;
+        else {
+          skipped += 1;
+          if (result.error) errors.push({ conversationId: row.id, error: result.error });
+        }
+      } catch (e) {
+        errors.push({
+          conversationId: row.id,
+          error: e instanceof Error ? e.message : String(e),
+        });
+      }
+    }
+
+    return {
+      crmProvider: crmAdapter.name,
+      attempted: rows.length,
+      pushed,
+      skipped,
+      errors,
+    };
+  }
+
+  private async finalizeLeadNow(
+    conversationId: string,
+  ): Promise<{ leadId: string | null; error?: string }> {
+    const conv = conversationMemory.getById(conversationId);
+    if (!conv) return { leadId: null, error: "conversation not found" };
+    if (conv.bitrixLeadId) return { leadId: conv.bitrixLeadId };
+    if (!hasHandoffBasics(conv.fields)) return { leadId: null, error: "handoff basics missing" };
+
+    const transcript = conversationMemory.formatTranscript(conversationId);
+    const payload = this.buildLeadPayload(
+      conv,
+      conv.fields,
+      conv.leadScore,
+      conv.leadScoreBand,
+      transcript,
+      conv.summary,
+    );
+    const aiSummary = await summaryGenerator.generate({ ...payload, aiSummary: "" });
+    payload.aiSummary = aiSummary;
+    const crm = await crmAdapter.createLead(payload);
+    this.storeLead(payload, crm.leadId, crmAdapter.name);
+    conversationMemory.update(conversationId, {
+      summary: aiSummary,
+      bitrixLeadId: crm.leadId,
+    });
+    if (!crm.success || !crm.leadId) {
+      return { leadId: null, error: crm.error || `CRM provider=${crmAdapter.name} returned empty leadId` };
+    }
+    return { leadId: crm.leadId };
+  }
+
   private finalizeLeadAsync(conversationId: string, payload: LeadPayload): void {
     void (async () => {
       try {
@@ -474,6 +608,13 @@ export class ChatEngine {
           summary: aiSummary,
           bitrixLeadId: crm.leadId,
         });
+        if (!crm.success || !crm.leadId) {
+          logger.warn("Lead stored without CRM id", {
+            conversationId,
+            provider: crmAdapter.name,
+            error: crm.error,
+          });
+        }
       } catch (e) {
         logger.error("Lead finalize failed", {
           conversationId,
