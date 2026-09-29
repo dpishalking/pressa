@@ -51,6 +51,7 @@ export function adminMenuKeyboard(): InlineKeyboard {
     .text("📊 Сводка", "admin:summary").row()
     .text("🟢 Сейчас в практике", "admin:active").row()
     .text("📋 Последние ролевки", "admin:recent").row()
+    .text("Отчёты SmartDesk", "sd:menu").row()
     .text("🔄 Обновить", "admin:menu");
 }
 

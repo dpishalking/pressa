@@ -26,7 +26,7 @@ import {
   moodEmoji,
   escapeHtml,
 } from "./format.js";
-import { replySmartdesk } from "./smartdesk.js";
+import { replySmartdesk, showSmartdeskMenu } from "./smartdesk.js";
 
 const BOT_TOKEN = process.env.TRAINER_BOT_TOKEN ?? process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -424,7 +424,7 @@ bot.command("finish", async (ctx) => {
 
 bot.command("help", async (ctx) => {
   const adminHint = isTrainerAdmin(ctx)
-    ? "\n/admin — панель наставника\n/queue — очередь SmartDesk\n/report — отчёт SmartDesk за сегодня"
+    ? "\n/admin — панель наставника\n/report — отчёты SmartDesk"
     : "";
   await ctx.reply(
     `<b>🎓 Тренажёр Retro Pressa</b>
@@ -447,10 +447,10 @@ bot.command("queue", async (ctx) => {
 
 bot.command("report", async (ctx) => {
   try {
-    await replySmartdesk(ctx, "report");
+    await showSmartdeskMenu(ctx);
   } catch (e) {
     console.error("[report]", e);
-    await ctx.reply("Не удалось собрать отчёт SmartDesk.");
+    await ctx.reply("Не удалось открыть отчёты SmartDesk.");
   }
 });
 
@@ -474,6 +474,26 @@ bot.on("callback_query:data", async (ctx) => {
   const uid = userId(ctx);
 
   try {
+    if (data.startsWith("sd:")) {
+      if (!isTrainerAdmin(ctx)) {
+        await ctx.answerCallbackQuery({ text: "Нет доступа", show_alert: true });
+        return;
+      }
+      if (data === "sd:menu") {
+        await ctx.answerCallbackQuery();
+        await showSmartdeskMenu(ctx);
+        return;
+      }
+      const format = data.slice(3);
+      if (format !== "queue" && format !== "managers" && format !== "inboxes" && format !== "report") {
+        await ctx.answerCallbackQuery({ text: "Неизвестный формат" });
+        return;
+      }
+      await ctx.answerCallbackQuery({ text: "Собираю…" });
+      await replySmartdesk(ctx, format);
+      return;
+    }
+
     // Main menu — отвечаем сразу, чтобы Telegram не «зависал» на кнопке
     if (data === "menu:main") {
       await ctx.answerCallbackQuery({ text: "Главное меню" });
@@ -829,8 +849,7 @@ bot.start({
         { command: "train", description: "Начать ролевую тренировку" },
         { command: "finish", description: "Завершить текущую тренировку" },
         { command: "help", description: "Помощь" },
-        { command: "queue", description: "Очередь SmartDesk" },
-        { command: "report", description: "Отчёт SmartDesk за сегодня" },
+        { command: "report", description: "Меню отчётов SmartDesk" },
       ]);
       console.log("✅ Bot commands set");
     } catch (e) {
