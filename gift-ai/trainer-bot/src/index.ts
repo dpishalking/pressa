@@ -75,8 +75,6 @@ bot.on("callback_query:data", async (ctx) => {
 });
 
 bot.on("message:text", async (ctx) => {
-  const text = ctx.message.text.trim();
-  if (text.startsWith("/")) return;
   if (!isTrainerAdmin(ctx)) {
     await deny(ctx);
     return;
