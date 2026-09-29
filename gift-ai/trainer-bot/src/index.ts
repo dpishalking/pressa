@@ -26,7 +26,7 @@ import {
   moodEmoji,
   escapeHtml,
 } from "./format.js";
-import { replySmartdesk, showSmartdeskMenu } from "./smartdesk.js";
+import { replySmartdesk, showSmartdeskMenu, smartdeskMenuKeyboard } from "./smartdesk.js";
 
 const BOT_TOKEN = process.env.TRAINER_BOT_TOKEN ?? process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -291,8 +291,22 @@ async function startTemplateTraining(ctx: Context, uid: string, template: string
   await showSessionDialogStart(ctx, mode, result, false);
 }
 
-const MAIN_MENU_TEXT =
-  "🎓 <b>Тренажёр Retro Pressa</b>\n\nОтработай диалог с клиентом в ролевке.\n\nНажми «Начать ролевку» и выбери сценарий.";
+/** Roleplay is paused; SmartDesk reports stay available. */
+const TRAINING_FROZEN = true;
+
+const TRAINING_PAUSED_TEXT =
+  "🎭 <b>Тренировки временно на паузе.</b>\n\nРолевки сейчас не проводятся.";
+
+async function replyTrainingPaused(ctx: Context): Promise<void> {
+  if (isTrainerAdmin(ctx)) {
+    await ctx.reply(`${TRAINING_PAUSED_TEXT}\n\nОтчёты SmartDesk — /report или кнопки ниже.`, {
+      parse_mode: "HTML",
+      reply_markup: smartdeskMenuKeyboard(),
+    });
+    return;
+  }
+  await ctx.reply(TRAINING_PAUSED_TEXT, { parse_mode: "HTML" });
+}
 
 function resetToMainMenuSession(uid: string): void {
   setSession(uid, {
@@ -317,10 +331,15 @@ async function showMainMenu(ctx: Context, uid: string): Promise<void> {
     }
   }
 
-  await ctx.reply(MAIN_MENU_TEXT, {
-    parse_mode: "HTML",
-    reply_markup: mainMenuKeyboard(),
-  });
+  if (TRAINING_FROZEN) {
+    await replyTrainingPaused(ctx);
+    return;
+  }
+
+  await ctx.reply(
+    "🎓 <b>Тренажёр Retro Pressa</b>\n\nОтработай диалог с клиентом в ролевке.\n\nНажми «Начать ролевку» и выбери сценарий.",
+    { parse_mode: "HTML", reply_markup: mainMenuKeyboard() },
+  );
 }
 
 async function showSessionDialogStart(
@@ -354,6 +373,11 @@ async function showSessionDialogStart(
 
 bot.command("start", async (ctx) => {
   const uid = userId(ctx);
+  if (TRAINING_FROZEN) {
+    await showMainMenu(ctx, uid);
+    return;
+  }
+
   const startPayload = parseStartPayload(ctx.message?.text) ?? undefined;
 
   try {
@@ -392,6 +416,10 @@ bot.command("start", async (ctx) => {
 });
 
 bot.command("train", async (ctx) => {
+  if (TRAINING_FROZEN) {
+    await replyTrainingPaused(ctx);
+    return;
+  }
   const uid = userId(ctx);
   try {
     const { userId: internalId } = await ensureUser(ctx);
@@ -413,6 +441,10 @@ bot.command("train", async (ctx) => {
 });
 
 bot.command("finish", async (ctx) => {
+  if (TRAINING_FROZEN) {
+    await replyTrainingPaused(ctx);
+    return;
+  }
   const uid = userId(ctx);
   try {
     await finishTraining(ctx, uid);
@@ -426,6 +458,13 @@ bot.command("help", async (ctx) => {
   const adminHint = isTrainerAdmin(ctx)
     ? "\n/admin — панель наставника\n/report — отчёты SmartDesk"
     : "";
+  if (TRAINING_FROZEN) {
+    await ctx.reply(
+      `${TRAINING_PAUSED_TEXT}${adminHint ? `\n\n/report — отчёты SmartDesk\n/queue — очередь` : ""}`,
+      { parse_mode: "HTML", reply_markup: isTrainerAdmin(ctx) ? smartdeskMenuKeyboard() : undefined },
+    );
+    return;
+  }
   await ctx.reply(
     `<b>🎓 Тренажёр Retro Pressa</b>
 
@@ -455,6 +494,10 @@ bot.command("report", async (ctx) => {
 });
 
 bot.command("admin", async (ctx) => {
+  if (TRAINING_FROZEN) {
+    await replyTrainingPaused(ctx);
+    return;
+  }
   if (!isTrainerAdmin(ctx)) {
     await ctx.reply(`Нет доступа. Ваш Telegram id: ${ctx.from?.id ?? "неизвестен"}.`);
     return;
@@ -495,6 +538,23 @@ bot.on("callback_query:data", async (ctx) => {
     }
 
     // Main menu — отвечаем сразу, чтобы Telegram не «зависал» на кнопке
+    if (
+      TRAINING_FROZEN &&
+      (data === "menu:train" ||
+        data.startsWith("template:") ||
+        data.startsWith("session:") ||
+        data.startsWith("feedback:") ||
+        data.startsWith("admin:") ||
+        data.startsWith("mode:") ||
+        data.startsWith("diff:") ||
+        data.startsWith("skill:") ||
+        data.startsWith("scenario:"))
+    ) {
+      await ctx.answerCallbackQuery({ text: "Тренировки на паузе" }).catch(() => {});
+      await replyTrainingPaused(ctx);
+      return;
+    }
+
     if (data === "menu:main") {
       await ctx.answerCallbackQuery({ text: "Главное меню" });
       await showMainMenu(ctx, uid);
@@ -713,6 +773,10 @@ bot.on("message:text", async (ctx) => {
   if (text.startsWith("/")) return;
 
   const uid = userId(ctx);
+  if (TRAINING_FROZEN) {
+    await replyTrainingPaused(ctx);
+    return;
+  }
   let session = getSession(uid);
 
   try {
@@ -844,13 +908,22 @@ bot.start({
       console.warn("[trainer-bot] Admin panel disabled — set ADMIN_API_KEY + ADMIN_TELEGRAM_IDS");
     }
     try {
-      await bot.api.setMyCommands([
-        { command: "start", description: "Главное меню" },
-        { command: "train", description: "Начать ролевую тренировку" },
-        { command: "finish", description: "Завершить текущую тренировку" },
-        { command: "help", description: "Помощь" },
-        { command: "report", description: "Меню отчётов SmartDesk" },
-      ]);
+      await bot.api.setMyCommands(
+        TRAINING_FROZEN
+          ? [
+              { command: "start", description: "Главное меню" },
+              { command: "report", description: "Отчёты SmartDesk" },
+              { command: "queue", description: "Очередь SmartDesk" },
+              { command: "help", description: "Помощь" },
+            ]
+          : [
+              { command: "start", description: "Главное меню" },
+              { command: "train", description: "Начать ролевую тренировку" },
+              { command: "finish", description: "Завершить текущую тренировку" },
+              { command: "help", description: "Помощь" },
+              { command: "report", description: "Меню отчётов SmartDesk" },
+            ],
+      );
       console.log("✅ Bot commands set");
     } catch (e) {
       console.warn("⚠️ Could not set bot commands:", e);
