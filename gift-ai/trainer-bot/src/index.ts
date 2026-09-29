@@ -456,7 +456,7 @@ bot.command("report", async (ctx) => {
 
 bot.command("admin", async (ctx) => {
   if (!isTrainerAdmin(ctx)) {
-    await ctx.reply("Нет доступа.");
+    await ctx.reply(`Нет доступа. Ваш Telegram id: ${ctx.from?.id ?? "неизвестен"}.`);
     return;
   }
   if (!adminConfigured()) {
@@ -507,7 +507,7 @@ bot.on("callback_query:data", async (ctx) => {
 
     if (data.startsWith("admin:")) {
       if (!isTrainerAdmin(ctx)) {
-        await ctx.reply("Нет доступа.");
+        await ctx.reply(`Нет доступа. Ваш Telegram id: ${ctx.from?.id ?? "неизвестен"}.`);
         return;
       }
       if (data === "admin:menu") {

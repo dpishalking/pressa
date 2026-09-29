@@ -54,7 +54,7 @@ async function loadExport(command: SmartdeskFormat): Promise<string> {
 
 export async function showSmartdeskMenu(ctx: Context): Promise<void> {
   if (!isTrainerAdmin(ctx)) {
-    await ctx.reply("Нет доступа. Отчёт SmartDesk только для наставника.");
+    await ctx.reply(`Нет доступа. Ваш Telegram id: ${ctx.from?.id ?? "неизвестен"}.`);
     return;
   }
   await ctx.reply(SMARTDESK_MENU, {
@@ -72,7 +72,7 @@ const STATUS: Record<SmartdeskFormat, string> = {
 
 export async function replySmartdesk(ctx: Context, command: SmartdeskFormat): Promise<void> {
   if (!isTrainerAdmin(ctx)) {
-    await ctx.reply("Нет доступа. Отчёт SmartDesk только для наставника.");
+    await ctx.reply(`Нет доступа. Ваш Telegram id: ${ctx.from?.id ?? "неизвестен"}.`);
     return;
   }
   await ctx.reply(STATUS[command]);
