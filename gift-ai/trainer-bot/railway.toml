@@ -3,6 +3,8 @@
 # TRAINER_BOT_TOKEN=...
 # ADMIN_API_KEY=...          (same as backend)
 # ADMIN_TELEGRAM_IDS=123456   (your Telegram user id)
+# SMARTDESK_EXPORT_URL=https://rp-bi.site/api/smartdesk/export
+# SMARTDESK_EXPORT_SECRET=...  (same as SMARTDESK_TELEGRAM_WEBHOOK_SECRET on the dashboard)
 
 [build]
 builder = "NIXPACKS"

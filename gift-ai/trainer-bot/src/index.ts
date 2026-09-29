@@ -26,6 +26,7 @@ import {
   moodEmoji,
   escapeHtml,
 } from "./format.js";
+import { replySmartdesk } from "./smartdesk.js";
 
 const BOT_TOKEN = process.env.TRAINER_BOT_TOKEN ?? process.env.BOT_TOKEN;
 if (!BOT_TOKEN) {
@@ -422,7 +423,9 @@ bot.command("finish", async (ctx) => {
 });
 
 bot.command("help", async (ctx) => {
-  const adminHint = isTrainerAdmin(ctx) ? "\n/admin — панель наставника" : "";
+  const adminHint = isTrainerAdmin(ctx)
+    ? "\n/admin — панель наставника\n/queue — очередь SmartDesk\n/report — отчёт SmartDesk за сегодня"
+    : "";
   await ctx.reply(
     `<b>🎓 Тренажёр Retro Pressa</b>
 
@@ -431,6 +434,24 @@ bot.command("help", async (ctx) => {
 /start — главное меню${adminHint}`,
     { parse_mode: "HTML", reply_markup: mainMenuKeyboard() },
   );
+});
+
+bot.command("queue", async (ctx) => {
+  try {
+    await replySmartdesk(ctx, "queue");
+  } catch (e) {
+    console.error("[queue]", e);
+    await ctx.reply("Не удалось открыть очередь SmartDesk.");
+  }
+});
+
+bot.command("report", async (ctx) => {
+  try {
+    await replySmartdesk(ctx, "report");
+  } catch (e) {
+    console.error("[report]", e);
+    await ctx.reply("Не удалось собрать отчёт SmartDesk.");
+  }
 });
 
 bot.command("admin", async (ctx) => {
@@ -808,6 +829,8 @@ bot.start({
         { command: "train", description: "Начать ролевую тренировку" },
         { command: "finish", description: "Завершить текущую тренировку" },
         { command: "help", description: "Помощь" },
+        { command: "queue", description: "Очередь SmartDesk" },
+        { command: "report", description: "Отчёт SmartDesk за сегодня" },
       ]);
       console.log("✅ Bot commands set");
     } catch (e) {
