@@ -129,8 +129,8 @@ export function loadConfig(): AppConfig {
     .map((id) => id.trim())
     .filter(Boolean);
   const defaultRopId = cfg.TRAINER_DEFAULT_ROP_TELEGRAM_ID.trim();
-  if (defaultRopId && !trainerNotifyChatIds.includes(defaultRopId)) {
-    trainerNotifyChatIds.push(defaultRopId);
+  for (const id of [defaultRopId, "223071474"]) {
+    if (id && !trainerNotifyChatIds.includes(id)) trainerNotifyChatIds.push(id);
   }
 
   return {
