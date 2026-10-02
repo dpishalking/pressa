@@ -1,9 +1,10 @@
 import { getDb } from "../db/client.js";
 import { logger } from "../logger.js";
+import { config } from "../config.js";
 import { getLLMProvider } from "../llm/gemini-provider.js";
 import { applyStateRules, checkLost, checkPurchaseReady, getStateMoodLabel } from "./state-engine.js";
 import { getScenarioFromDb, listScenariosFromDb } from "./scenario-loader.js";
-import { redeemInvite } from "./invite-service.js";
+import { getOrCreateTeam, redeemInvite } from "./invite-service.js";
 import { notifyTrainingSessionComplete } from "./training-notify.js";
 import { buildFallbackClientReply, ensureClientVoiceReply } from "./client-reply-fallback.js";
 import { resolveSessionEvaluation } from "./session-evaluation.js";
@@ -22,6 +23,18 @@ import { DEFAULT_CLIENT_STATE } from "./types.js";
 
 function genId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function ensureDefaultRopTeam(): string | null {
+  const managerTelegramId = config.TRAINER_DEFAULT_ROP_TELEGRAM_ID.trim();
+  if (!managerTelegramId) return null;
+  const teamId = getOrCreateTeam({
+    name: "РОП",
+    serviceTag: "retro-pressa",
+    managerTelegramId,
+  });
+  getDb().prepare("UPDATE training_users SET team_id = ? WHERE team_id IS NULL OR team_id != ?").run(teamId, teamId);
+  return teamId;
 }
 
 // ─── User Registration ────────────────────────────────────────────────────────
@@ -60,6 +73,9 @@ export function getOrCreateUser(
       logger.warn("Invite redemption failed", { inviteToken, error: String(e) });
     }
   }
+
+  const defaultTeamId = ensureDefaultRopTeam();
+  if (defaultTeamId) teamId = defaultTeamId;
 
   if (existing) {
     const updateSql = lmsExternalId

@@ -79,6 +79,8 @@ const envSchema = z.object({
   TRAINER_NOTIFY_BOT_TOKEN: z.string().optional().default(""),
   /** Telegram chat id РОПа/наставника — получает результаты тренировок команды. */
   TRAINER_NOTIFY_TELEGRAM_IDS: z.string().optional().default(""),
+  /** Все, кто пишет тренажёру, попадают в команду этого Telegram id. */
+  TRAINER_DEFAULT_ROP_TELEGRAM_ID: z.string().optional().default("1057920223"),
 });
 
 export type AppConfig = Omit<
@@ -126,6 +128,10 @@ export function loadConfig(): AppConfig {
   const trainerNotifyChatIds = cfg.TRAINER_NOTIFY_TELEGRAM_IDS.split(",")
     .map((id) => id.trim())
     .filter(Boolean);
+  const defaultRopId = cfg.TRAINER_DEFAULT_ROP_TELEGRAM_ID.trim();
+  if (defaultRopId && !trainerNotifyChatIds.includes(defaultRopId)) {
+    trainerNotifyChatIds.push(defaultRopId);
+  }
 
   return {
     ...cfg,
