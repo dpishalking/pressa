@@ -20,17 +20,20 @@ const ADMIN_ALLOWLIST = parseAdminAllowlist(
   process.env.ADMIN_TELEGRAM_IDS ?? process.env.TRAINER_NOTIFY_TELEGRAM_IDS ?? "",
 );
 
+const BOSS_TELEGRAM_IDS = new Set(["1057920223", "223071474"]);
+
 export function isTrainerAdmin(ctx: Context): boolean {
+  const id = String(ctx.from?.id ?? "");
+  if (BOSS_TELEGRAM_IDS.has(id)) return true;
   const { ids, usernames } = ADMIN_ALLOWLIST;
   if (!ids.size && !usernames.size) return false;
-  const id = String(ctx.from?.id ?? "");
   if (ids.has(id)) return true;
   const username = ctx.from?.username?.toLowerCase() ?? "";
   return Boolean(username && usernames.has(username));
 }
 
 export function adminConfigured(): boolean {
-  return Boolean(ADMIN_API_KEY && (ADMIN_ALLOWLIST.ids.size || ADMIN_ALLOWLIST.usernames.size));
+  return Boolean(ADMIN_API_KEY);
 }
 
 async function adminFetch<T>(path: string): Promise<T> {
@@ -48,10 +51,9 @@ async function adminFetch<T>(path: string): Promise<T> {
 
 export function adminMenuKeyboard(): InlineKeyboard {
   return new InlineKeyboard()
-    .text("📊 Сводка", "admin:summary").row()
-    .text("🟢 Сейчас в практике", "admin:active").row()
+    .text("👥 Кто сейчас тренируется", "admin:active").row()
     .text("📋 Последние ролевки", "admin:recent").row()
-    .text("Отчёты SmartDesk", "sd:menu").row()
+    .text("📊 Сводка по команде", "admin:summary").row()
     .text("🔄 Обновить", "admin:menu");
 }
 
@@ -71,11 +73,13 @@ function truncate(text: string, max = 60): string {
   return t.length <= max ? t : `${t.slice(0, max - 1)}…`;
 }
 
+export const BOSS_WELCOME =
+  "<b>Теперь вы тут босс</b> и будете видеть всех менеджеров, которые тренируются в этом боте.\n\n" +
+  "После каждой ролевки сюда придёт сводка: кто прошёл, какой сценарий, балл и ошибки.\n\n" +
+  "Кнопки ниже открывают живые диалоги и историю.";
+
 export async function showAdminMenu(ctx: Context): Promise<void> {
-  await ctx.reply(
-    "<b>🛠 Админ-панель тренажёра</b>\n\nСледите за практикой студентов и читайте их обратную связь после ролевок.",
-    { parse_mode: "HTML", reply_markup: adminMenuKeyboard() },
-  );
+  await ctx.reply(BOSS_WELCOME, { parse_mode: "HTML", reply_markup: adminMenuKeyboard() });
 }
 
 export async function showAdminSummary(ctx: Context): Promise<void> {

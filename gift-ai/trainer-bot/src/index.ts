@@ -408,6 +408,10 @@ bot.command("start", async (ctx) => {
     }
 
     await restoreActiveSession(uid, internalUserId);
+    if (isTrainerAdmin(ctx)) {
+      await showAdminMenu(ctx);
+      return;
+    }
     await showMainMenu(ctx, uid);
   } catch (e) {
     console.error("[start]", e);
